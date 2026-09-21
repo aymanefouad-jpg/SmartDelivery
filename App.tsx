@@ -8,6 +8,7 @@ import {
   ActivityIndicator,
   Alert,
   Modal,
+  Linking,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -15,10 +16,12 @@ import { Delivery } from './src/types';
 import {
   processNewDeliveryFromPhoto,
   mockOptimizeRoute,
+  mockGeocode,
 } from './src/utils/ai';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
 import { DeliveryCard } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
+import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
 
 const primaryDark = '#001F3F';
@@ -29,6 +32,7 @@ export default function App() {
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [processing, setProcessing] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
+  const [manualInputVisible, setManualInputVisible] = useState(false);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
   const handleLanguageChange = useCallback((lang: 'ar' | 'en' | 'fr') => {
@@ -78,9 +82,41 @@ export default function App() {
     await openRouteInMapsApp(deliveries);
   }, [deliveries]);
 
-  const renderDelivery = useCallback(
-    ({ item }: { item: Delivery }) => <DeliveryCard delivery={item} />,
+  const handleDeleteDelivery = useCallback((id: string) => {
+    setDeliveries((prev) => prev.filter((d) => d.id !== id));
+  }, []);
+
+  const handleManualInputSave = useCallback(
+    async (data: { name: string; address: string; phone: string }) => {
+      setManualInputVisible(false);
+      setProcessing(true);
+      try {
+        const coords = await mockGeocode(data.address);
+        const newDelivery: Delivery = {
+          id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          name: data.name,
+          address: data.address,
+          phone: data.phone,
+          latitude: coords.lat,
+          longitude: coords.lon,
+          order: 0,
+        };
+        setDeliveries((prev) => [...prev, newDelivery]);
+      } catch (error) {
+        console.error('Error adding manual delivery:', error);
+        Alert.alert('خطأ', 'فشل في إضافة الكولية. يرجى المحاولة مرة أخرى.');
+      } finally {
+        setProcessing(false);
+      }
+    },
     []
+  );
+
+  const renderDelivery = useCallback(
+    ({ item }: { item: Delivery }) => (
+      <DeliveryCard delivery={item} onDelete={handleDeleteDelivery} />
+    ),
+    [handleDeleteDelivery]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (
@@ -112,6 +148,9 @@ export default function App() {
         <TouchableOpacity style={styles.primaryButton} onPress={() => setCameraVisible(true)} disabled={processing}>
           <Text style={styles.buttonText}>{t('addDelivery')}</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.secondaryButton} onPress={() => setManualInputVisible(true)} disabled={processing}>
+          <Text style={styles.buttonText}>إدخال يدوي</Text>
+        </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={handleOptimize} disabled={processing || deliveries.length === 0}>
           <Text style={styles.buttonText}>{t('optimize')}</Text>
         </TouchableOpacity>
@@ -133,6 +172,9 @@ export default function App() {
       />
       <Modal visible={cameraVisible} animationType="slide" transparent={true}>
         <CameraScreen onCapture={handleCapture} onCancel={() => setCameraVisible(false)} />
+      </Modal>
+      <Modal visible={manualInputVisible} animationType="slide" transparent={true} presentationStyle="pageSheet">
+        <ManualInputScreen onSave={handleManualInputSave} onCancel={() => setManualInputVisible(false)} />
       </Modal>
     </View>
   );

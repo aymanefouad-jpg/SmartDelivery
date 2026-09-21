@@ -1,12 +1,44 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking } from 'react-native';
 import { Delivery } from '../types';
 
 interface DeliveryCardProps {
   delivery: Delivery;
+  onDelete: (id: string) => void;
 }
 
-export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery }) => {
+export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onDelete }) => {
+  const handleCall = () => {
+    if (!delivery.phone || delivery.phone === 'غير معروف') {
+      Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
+      return;
+    }
+    const cleanPhone = delivery.phone.replace(/\s/g, '');
+    const phoneUrl = `tel:${cleanPhone}`;
+    Linking.canOpenURL(phoneUrl)
+      .then((supported) => {
+        if (supported) {
+          return Linking.openURL(phoneUrl);
+        } else {
+          Alert.alert('خطأ', 'لا يمكن فتح تطبيق الاتصال.');
+        }
+      })
+      .catch(() => {
+        Alert.alert('خطأ', 'حدثت مشكلة أثناء محاولة الاتصال.');
+      });
+  };
+
+  const handleDelete = () => {
+    Alert.alert(
+      'تأكيد الحذف',
+      'هل تريد حذف هذه الكولية؟',
+      [
+        { text: 'إلغاء', style: 'cancel' },
+        { text: 'نعم', style: 'destructive', onPress: () => onDelete(delivery.id) },
+      ]
+    );
+  };
+
   return (
     <View style={styles.card}>
       <View style={styles.header}>
@@ -14,6 +46,9 @@ export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery }) => {
           <Text style={styles.orderText}>{delivery.order}</Text>
         </View>
         <Text style={styles.name} numberOfLines={1}>{delivery.name}</Text>
+        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
+          <Text style={styles.deleteButtonText}>🗑️</Text>
+        </TouchableOpacity>
       </View>
       <View style={styles.divider} />
       <View style={styles.infoRow}>
@@ -22,7 +57,9 @@ export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery }) => {
       </View>
       <View style={styles.infoRow}>
         <Text style={styles.label}>الهاتف:</Text>
-        <Text style={styles.value}>{delivery.phone}</Text>
+        <TouchableOpacity onPress={handleCall} style={styles.phoneButton}>
+          <Text style={styles.phoneText}>📞 {delivery.phone}</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -68,6 +105,12 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
   },
+  deleteButton: {
+    padding: 8,
+  },
+  deleteButtonText: {
+    fontSize: 20,
+  },
   divider: {
     height: 1,
     backgroundColor: '#e8eef5',
@@ -91,5 +134,22 @@ const styles = StyleSheet.create({
     flex: 1,
     textAlign: 'right',
     marginRight: 8,
+  },
+  phoneWrapper: {
+    flex: 1,
+    textAlign: 'right',
+  },
+  phoneButton: {
+    backgroundColor: '#e6f2ff',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 4,
+  },
+  phoneText: {
+    fontSize: 14,
+    color: '#007AFF',
+    fontWeight: 'bold',
+    textDecorationLine: 'underline',
   },
 });
