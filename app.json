@@ -1,21 +1,31 @@
 {
   "expo": {
-    "name": "SmartDelivery",
-    "slug": "SmartDelivery",
+    "name": "AFD Delivery",
+    "slug": "smartdelivery",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#001F3F"
+    },
+    "assetBundlePatterns": ["**/*"],
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.aymanefouad.smartdelivery"
     },
     "android": {
+      "package": "com.aymanefouad.smartdelivery",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#001F3F"
       },
-      "predictiveBackGestureEnabled": false,
-      "package": "com.aymanefouad.smartdelivery"
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -28,11 +38,6 @@
           "cameraPermission": "Allow AFD Delivery to access your camera to photograph packages."
         }
       ]
-    ],
-    "extra": {
-      "eas": {
-        "projectId": "07c73c88-d6ce-40d6-a558-c04d70aba2a0"
-      }
-    }
+    ]
   }
 }
