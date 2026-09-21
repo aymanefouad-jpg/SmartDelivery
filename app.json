@@ -11,7 +11,9 @@
       "resizeMode": "contain",
       "backgroundColor": "#001F3F"
     },
-    "assetBundlePatterns": ["**/*"],
+    "assetBundlePatterns": [
+      "**/*"
+    ],
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.aymanefouad.smartdelivery"
@@ -31,13 +33,21 @@
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
-      ["rn-af-identity-ocr"],
+      [
+        "rn-af-identity-ocr"
+      ],
       [
         "expo-camera",
         {
           "cameraPermission": "Allow AFD Delivery to access your camera to photograph packages."
         }
       ]
-    ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "7f618367-f384-493b-a374-36a342d11dfc"
+      }
+    },
+    "owner": "aymane_fouad1983"
   }
 }
