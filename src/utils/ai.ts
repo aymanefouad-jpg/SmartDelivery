@@ -83,6 +83,31 @@ export async function mockGeocode(address: string): Promise<{
   };
 }
 
+export async function geocodeAddress(address: string): Promise<{
+  lat: number;
+  lon: number;
+} | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1`;
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'AFD-Delivery-App',
+      },
+    });
+    const data = await response.json();
+    if (data && data.length > 0) {
+      return {
+        lat: parseFloat(data[0].lat),
+        lon: parseFloat(data[0].lon),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Nominatim geocoding error:', error);
+    return null;
+  }
+}
+
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
   const extractedText = await mockOCR(photoUri);
   console.log('OCR Result:', extractedText);
@@ -96,7 +121,19 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const addressMatch = extractedText.match(/(?:Adresse|العنوان)[:\s]+([^\n]+)/i);
   const address = addressMatch ? addressMatch[1].trim() : extractedText.slice(0, 100);
 
-  const coords = await mockGeocode(address);
+  const realCoords = await geocodeAddress(address);
+  let coords: { lat: number; lon: number };
+  let usedReal = false;
+
+  if (realCoords) {
+    coords = realCoords;
+    usedReal = true;
+  } else {
+    coords = await mockGeocode(address);
+    usedReal = false;
+  }
+
+  console.log('Geocoding method:', usedReal ? 'Nominatim' : 'Mock');
 
   return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
