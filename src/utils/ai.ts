@@ -254,52 +254,69 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
 
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
   const extractedText = await mockOCR(photoUri);
-  console.log('OCR Result:', extractedText);
 
+  if (!extractedText || extractedText.trim() === '') {
+    throw new Error('لم يتم التعرف على أي نص من الصورة.');
+  }
+
+  // 1. Extract phone number (Moroccan format)
   const phoneMatch = extractedText.match(/(\+?212|0)\s?[6-7](\s?\d{2}){4}/);
-  const phone = phoneMatch ? phoneMatch[0].trim() : 'غير معروف';
+  const phone = phoneMatch ? phoneMatch[0].replace(/\s/g, '') : 'غير معروف';
 
-  const nameMatch = extractedText.match(/(?:Destinataire|المرسل إليه|Client)[:\s]+([^\n]+)/i);
-  const name = nameMatch ? nameMatch[1].trim() : 'غير معروف';
-
-  const addressMatch = extractedText.match(/(?:Adresse|العنوان)[:\s]+([^\n]+)/i);
-  const address = addressMatch ? addressMatch[1].trim() : extractedText.slice(0, 100);
-
-  // Priority 1: Try to detect city from OCR text (fastest, works offline)
-  const cityResult = findCityInAddress(extractedText);
-  let coords: { lat: number; lon: number };
-  let geocodeMethod = 'Mock';
-
-  if (cityResult.city !== 'Unknown') {
-    coords = { lat: cityResult.lat, lon: cityResult.lon };
-    geocodeMethod = 'CityDetection';
-    console.log('Using city coordinates from OCR text:', cityResult.city);
-  } else {
-    // Priority 2: Use Nominatim for precise geocoding (requires internet)
-    const nominatimCoords = await geocodeWithNominatim(address);
-    if (nominatimCoords) {
-      coords = nominatimCoords;
-      geocodeMethod = 'Nominatim';
-      console.log('Using Nominatim geocoding for:', address);
-    } else {
-      // Priority 3: Fallback to mock geocoding
-      coords = await mockGeocode(address);
-      geocodeMethod = 'Mock';
+  // 2. Extract name
+  let name = 'غير معروف';
+  const namePatterns = [
+    /(?:Destinataire|المرسل إليه)[:\s]+([^\n]+)/i,
+    /(?:Client|Nom|الاسم)[:\s]+([^\n]+)/i,
+  ];
+  for (const pattern of namePatterns) {
+    const match = extractedText.match(pattern);
+    if (match && match[1]) {
+      name = match[1].trim().substring(0, 30);
+      break;
     }
   }
 
-  console.log('Geocoding method:', geocodeMethod);
+  // 3. Try Nominatim FIRST with the full text
+  let coords: { lat: number; lon: number } | null = null;
+  let geocodeSource = 'none';
+
+  const fullTextClean = extractedText.replace(/\n/g, ' ').substring(0, 200);
+  try {
+    coords = await geocodeWithNominatim(fullTextClean);
+    if (coords) {
+      geocodeSource = 'nominatim-full';
+    }
+  } catch (error) {
+    console.error('Geocode with Nominatim failed:', error);
+  }
+
+  // 4. If Nominatim fails, try city detection
+  if (!coords) {
+    try {
+      const detected = findCityInAddress(extractedText);
+      coords = { lat: detected.lat, lon: detected.lon };
+      geocodeSource = `city-detection-${detected.city}`;
+    } catch (error) {
+      console.error('City detection failed:', error);
+    }
+  }
+
+  const address = extractedText.split('\n')[0].substring(0, 80) || 'غير معروف';
+
+  console.log('Geocode source:', geocodeSource);
+  console.log('Final coords:', coords);
 
   return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     name,
     address,
     phone,
-    latitude: coords.lat,
-    longitude: coords.lon,
+    latitude: coords ? coords.lat : null,
+    longitude: coords ? coords.lon : null,
     order: 0,
   };
-}
+};
 
 export async function mockOptimizeRoute(deliveries: Delivery[]): Promise<Delivery[]> {
   await sleep(800);
