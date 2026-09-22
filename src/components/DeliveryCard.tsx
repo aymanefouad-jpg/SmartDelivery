@@ -1,13 +1,15 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
+import * as Clipboard from 'expo-clipboard';
 import { Delivery } from '../types';
 
-interface DeliveryCardProps {
+interface Props {
   delivery: Delivery;
-  onDelete: (id: string) => void;
+  onDelete?: (id: string) => void;
+  onPress?: (delivery: Delivery) => void;
 }
 
-export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onDelete }) => {
+export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -20,136 +22,113 @@ export const DeliveryCard: React.FC<DeliveryCardProps> = ({ delivery, onDelete }
         if (supported) {
           return Linking.openURL(phoneUrl);
         } else {
-          Alert.alert('خطأ', 'لا يمكن فتح تطبيق الاتصال.');
+          handleCopyPhone();
         }
       })
-      .catch(() => {
-        Alert.alert('خطأ', 'حدثت مشكلة أثناء محاولة الاتصال.');
-      });
+      .catch(() => handleCopyPhone());
   };
 
-  const handleDelete = () => {
-    Alert.alert(
-      'تأكيد الحذف',
-      'هل تريد حذف هذه الكولية؟',
-      [
-        { text: 'إلغاء', style: 'cancel' },
-        { text: 'نعم', style: 'destructive', onPress: () => onDelete(delivery.id) },
-      ]
-    );
+  const handleCopyPhone = async () => {
+    if (!delivery.phone || delivery.phone === 'غير معروف') {
+      Alert.alert('تنبيه', 'لا يوجد رقم هاتف.');
+      return;
+    }
+    await Clipboard.setStringAsync(delivery.phone);
+    Alert.alert('تم النسخ', `تم نسخ الرقم: ${delivery.phone}`);
+  };
+
+  const handleDeletePress = (e: any) => {
+    e.stopPropagation?.();
+    if (onDelete) {
+      Alert.alert(
+        'تأكيد الحذف',
+        'هل تريد حذف هذه الكولية؟',
+        [
+          { text: 'إلغاء', style: 'cancel' },
+          { text: 'نعم', style: 'destructive', onPress: () => onDelete(delivery.id) },
+        ]
+      );
+    }
   };
 
   return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <View style={styles.orderBadge}>
-          <Text style={styles.orderText}>{delivery.order}</Text>
+    <TouchableOpacity
+      style={styles.card}
+      onPress={() => onPress?.(delivery)}
+      activeOpacity={0.7}
+    >
+      <View style={styles.orderBadge}>
+        <Text style={styles.orderText}>{delivery.order}</Text>
+      </View>
+      <View style={styles.info}>
+        <View style={styles.headerRow}>
+          <Text style={styles.name}>{delivery.name}</Text>
+          <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
+            <Text style={styles.deleteText}>🗑️</Text>
+          </TouchableOpacity>
         </View>
-        <Text style={styles.name} numberOfLines={1}>{delivery.name}</Text>
-        <TouchableOpacity style={styles.deleteButton} onPress={handleDelete}>
-          <Text style={styles.deleteButtonText}>🗑️</Text>
-        </TouchableOpacity>
+        <Text style={styles.address}>{delivery.address}</Text>
+        <View style={styles.phoneRow}>
+          <TouchableOpacity onPress={handleCall} style={styles.phoneButton}>
+            <Text style={styles.phoneText}>📞 {delivery.phone}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleCopyPhone} style={styles.copyButton}>
+            <Text style={styles.copyText}>📋</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <View style={styles.divider} />
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>العنوان:</Text>
-        <Text style={styles.value} numberOfLines={2}>{delivery.address}</Text>
-      </View>
-      <View style={styles.infoRow}>
-        <Text style={styles.label}>الهاتف:</Text>
-        <TouchableOpacity onPress={handleCall} style={styles.phoneButton}>
-          <Text style={styles.phoneText}>📞 {delivery.phone}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   card: {
+    flexDirection: 'row-reverse',
     backgroundColor: '#fff',
-    borderRadius: 12,
-    padding: 16,
-    marginBottom: 12,
+    padding: 15,
+    borderRadius: 10,
+    marginBottom: 10,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
-    borderWidth: 1,
-    borderColor: '#e8eef5',
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
+    alignItems: 'flex-start',
   },
   orderBadge: {
+    backgroundColor: '#001F3F',
     width: 36,
     height: 36,
     borderRadius: 18,
-    backgroundColor: '#1e88e5',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 12,
   },
-  orderText: {
-    color: '#fff',
-    fontWeight: 'bold',
-    fontSize: 16,
+  orderText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  info: { flex: 1, alignItems: 'flex-end' },
+  headerRow: {
+    flexDirection: 'row-reverse',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    width: '100%',
   },
-  name: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#1a237e',
-    flex: 1,
-    textAlign: 'right',
-  },
-  deleteButton: {
-    padding: 8,
-  },
-  deleteButtonText: {
-    fontSize: 20,
-  },
-  divider: {
-    height: 1,
-    backgroundColor: '#e8eef5',
-    marginVertical: 8,
-  },
-  infoRow: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    marginBottom: 8,
-  },
-  label: {
-    fontSize: 14,
-    color: '#546e7a',
-    fontWeight: '500',
-    width: 60,
-    textAlign: 'right',
-  },
-  value: {
-    fontSize: 14,
-    color: '#263238',
-    flex: 1,
-    textAlign: 'right',
-    marginRight: 8,
-  },
-  phoneWrapper: {
-    flex: 1,
-    textAlign: 'right',
-  },
+  name: { fontSize: 16, fontWeight: 'bold', color: '#001F3F', marginBottom: 4 },
+  deleteButton: { padding: 4 },
+  deleteText: { fontSize: 18 },
+  address: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'right' },
+  phoneRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 4 },
   phoneButton: {
     backgroundColor: '#e6f2ff',
     paddingVertical: 6,
     paddingHorizontal: 12,
     borderRadius: 8,
-    marginTop: 4,
   },
-  phoneText: {
-    fontSize: 14,
-    color: '#007AFF',
-    fontWeight: 'bold',
-    textDecorationLine: 'underline',
+  phoneText: { fontSize: 14, color: '#007AFF', fontWeight: 'bold' },
+  copyButton: {
+    backgroundColor: '#e6f2ff',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
   },
+  copyText: { fontSize: 16 },
 });

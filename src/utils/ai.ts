@@ -130,15 +130,49 @@ const cityMap: Record<string, { lat: number; lon: number }> = {
   'tetouan': { lat: 35.5785, lon: -5.3684 },
 };
 
-function findCityInAddress(address: string): { lat: number; lon: number } | null {
-  for (const [city, coords] of Object.entries(cityMap)) {
-    if (address.includes(city)) {
-      console.log(`Found city in address: ${city}`);
-      return coords;
+export const findCityInAddress = (text: string): { lat: number; lon: number; city: string } => {
+  if (!text) {
+    return { lat: 33.5731, lon: -7.5898, city: 'Unknown' };
+  }
+
+  const cityMap: Record<string, { lat: number; lon: number }> = {
+    'طنجة': { lat: 35.7595, lon: -5.8340 },
+    'tanger': { lat: 35.7595, lon: -5.8340 },
+    'tangier': { lat: 35.7595, lon: -5.8340 },
+    'طنجه': { lat: 35.7595, lon: -5.8340 },
+    'الرباط': { lat: 34.0209, lon: -6.8416 },
+    'rabat': { lat: 34.0209, lon: -6.8416 },
+    'الدار البيضاء': { lat: 33.5731, lon: -7.5898 },
+    'casablanca': { lat: 33.5731, lon: -7.5898 },
+    'فاس': { lat: 34.0331, lon: -5.0003 },
+    'fes': { lat: 34.0331, lon: -5.0003 },
+    'مراكش': { lat: 31.6295, lon: -7.9811 },
+    'marrakech': { lat: 31.6295, lon: -7.9811 },
+    'أكادير': { lat: 30.4278, lon: -9.5981 },
+    'agadir': { lat: 30.4278, lon: -9.5981 },
+    'مكناس': { lat: 33.8935, lon: -5.5473 },
+    'meknes': { lat: 33.8935, lon: -5.5473 },
+    'وجدة': { lat: 34.6867, lon: -1.9114 },
+    'oujda': { lat: 34.6867, lon: -1.9114 },
+    'تطوان': { lat: 35.5785, lon: -5.3684 },
+    'tetouan': { lat: 35.5785, lon: -5.3684 },
+    'القنيطرة': { lat: 34.2610, lon: -6.5802 },
+    'kenitra': { lat: 34.2610, lon: -6.5802 },
+    'سلا': { lat: 34.0531, lon: -6.7985 },
+    'sale': { lat: 34.0531, lon: -6.7985 },
+    'الجديدة': { lat: 33.2316, lon: -8.5007 },
+    'el jadida': { lat: 33.2316, lon: -8.5007 },
+  };
+
+  const lowerText = text.toLowerCase();
+  for (const [cityName, coords] of Object.entries(cityMap)) {
+    if (lowerText.includes(cityName.toLowerCase())) {
+      console.log('City detected:', cityName);
+      return { ...coords, city: cityName };
     }
   }
-  return null;
-}
+  return { lat: 33.5731, lon: -7.5898, city: 'Unknown' };
+};
 
 export async function mockGeocode(address: string): Promise<{
   lat: number;
@@ -219,14 +253,14 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const addressMatch = extractedText.match(/(?:Adresse|العنوان)[:\s]+([^\n]+)/i);
   const address = addressMatch ? addressMatch[1].trim() : extractedText.slice(0, 100);
 
-  const cityCoords = findCityInAddress(extractedText);
+  const cityResult = findCityInAddress(extractedText);
   let coords: { lat: number; lon: number };
   let geocodeMethod = 'Mock';
 
-  if (cityCoords) {
-    coords = cityCoords;
+  if (cityResult.city !== 'Unknown') {
+    coords = { lat: cityResult.lat, lon: cityResult.lon };
     geocodeMethod = 'CityDetection';
-    console.log('Using city coordinates from OCR text');
+    console.log('Using city coordinates from OCR text:', cityResult.city);
   } else {
     const realCoords = await geocodeAddress(address);
     if (realCoords) {

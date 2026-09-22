@@ -86,6 +86,10 @@ export default function App() {
     setDeliveries((prev) => prev.filter((d) => d.id !== id));
   }, []);
 
+  const handleCardPress = useCallback(async (delivery: Delivery) => {
+    await openRouteInMapsApp([delivery]);
+  }, []);
+
   const handleManualInputSave = useCallback(
     async (data: { name: string; address: string; phone: string }) => {
       setManualInputVisible(false);
@@ -114,9 +118,13 @@ export default function App() {
 
   const renderDelivery = useCallback(
     ({ item }: { item: Delivery }) => (
-      <DeliveryCard delivery={item} onDelete={handleDeleteDelivery} />
+      <DeliveryCard 
+        delivery={item} 
+        onDelete={handleDeleteDelivery}
+        onPress={handleCardPress}
+      />
     ),
-    [handleDeleteDelivery]
+    [handleDeleteDelivery, handleCardPress]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (
