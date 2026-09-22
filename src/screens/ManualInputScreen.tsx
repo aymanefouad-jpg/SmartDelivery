@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, Keyboard } from 'react-native';
 import { t } from '../i18n';
+import { Delivery } from '../types';
 
 interface ManualInputScreenProps {
   onSave: (data: { name: string; address: string; phone: string }) => void;
   onCancel: () => void;
+  initialData?: Delivery | null;
 }
 
-export const ManualInputScreen: React.FC<ManualInputScreenProps> = ({ onSave, onCancel }) => {
+export const ManualInputScreen: React.FC<ManualInputScreenProps> = ({ onSave, onCancel, initialData }) => {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [phone, setPhone] = useState('');
+
+  useEffect(() => {
+    if (initialData) {
+      setName(initialData.name);
+      setAddress(initialData.address);
+      setPhone(initialData.phone);
+    }
+  }, [initialData]);
 
   const handleSave = () => {
     if (!name.trim() || !address.trim() || !phone.trim()) {
@@ -23,7 +33,7 @@ export const ManualInputScreen: React.FC<ManualInputScreenProps> = ({ onSave, on
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>إدخال يدوي</Text>
+        <Text style={styles.headerTitle}>{initialData ? 'تعديل الكولية' : 'إدخال يدوي'}</Text>
         <TouchableOpacity style={styles.closeButton} onPress={onCancel}>
           <Text style={styles.closeButtonText}>✕</Text>
         </TouchableOpacity>

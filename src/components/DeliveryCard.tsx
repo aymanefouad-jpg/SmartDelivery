@@ -7,9 +7,10 @@ interface Props {
   delivery: Delivery;
   onDelete?: (id: string) => void;
   onPress?: (delivery: Delivery) => void;
+  onEdit?: (delivery: Delivery) => void;
 }
 
-export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress }) => {
+export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -51,6 +52,13 @@ export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress }) =
     }
   };
 
+  const handleEditPress = (e: any) => {
+    e.stopPropagation?.();
+    if (onEdit) {
+      onEdit(delivery);
+    }
+  };
+
   return (
     <TouchableOpacity
       style={styles.card}
@@ -63,6 +71,9 @@ export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress }) =
       <View style={styles.info}>
         <View style={styles.headerRow}>
           <Text style={styles.name}>{delivery.name}</Text>
+          <TouchableOpacity onPress={handleEditPress} style={styles.editButton}>
+            <Text style={styles.editText}>✏️</Text>
+          </TouchableOpacity>
           <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
             <Text style={styles.deleteText}>🗑️</Text>
           </TouchableOpacity>
@@ -115,6 +126,8 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: 'bold', color: '#001F3F', marginBottom: 4 },
   deleteButton: { padding: 4 },
   deleteText: { fontSize: 18 },
+  editButton: { padding: 4 },
+  editText: { fontSize: 18 },
   address: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'right' },
   phoneRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 4 },
   phoneButton: {

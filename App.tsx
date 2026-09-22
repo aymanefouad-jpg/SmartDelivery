@@ -17,6 +17,7 @@ import {
   processNewDeliveryFromPhoto,
   mockOptimizeRoute,
   mockGeocode,
+  findCityInAddress,
 } from './src/utils/ai';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
 import { DeliveryCard } from './src/components/DeliveryCard';
@@ -33,6 +34,7 @@ export default function App() {
   const [processing, setProcessing] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualInputVisible, setManualInputVisible] = useState(false);
+  const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
   const handleLanguageChange = useCallback((lang: 'ar' | 'en' | 'fr') => {
@@ -90,6 +92,40 @@ export default function App() {
     await openRouteInMapsApp([delivery]);
   }, []);
 
+  const handleEditDelivery = useCallback((delivery: Delivery) => {
+    setEditingDelivery(delivery);
+  }, []);
+
+  const handleEditSave = useCallback(
+    async (data: { name: string; address: string; phone: string }) => {
+      if (!editingDelivery) return;
+      setEditingDelivery(null);
+      setProcessing(true);
+      try {
+        const cityResult = findCityInAddress(data.address);
+        let coords: { lat: number; lon: number };
+        if (cityResult.city !== 'Unknown') {
+          coords = { lat: cityResult.lat, lon: cityResult.lon };
+        } else {
+          coords = await mockGeocode(data.address);
+        }
+        setDeliveries((prev) =>
+          prev.map((d) =>
+            d.id === editingDelivery.id
+              ? { ...d, name: data.name, address: data.address, phone: data.phone, latitude: coords.lat, longitude: coords.lon }
+              : d
+          )
+        );
+      } catch (error) {
+        console.error('Error editing delivery:', error);
+        Alert.alert('خطأ', 'فشل في تعديل الكولية. يرجى المحاولة مرة أخرى.');
+      } finally {
+        setProcessing(false);
+      }
+    },
+    [editingDelivery]
+  );
+
   const handleManualInputSave = useCallback(
     async (data: { name: string; address: string; phone: string }) => {
       setManualInputVisible(false);
@@ -122,9 +158,10 @@ export default function App() {
         delivery={item} 
         onDelete={handleDeleteDelivery}
         onPress={handleCardPress}
+        onEdit={handleEditDelivery}
       />
     ),
-    [handleDeleteDelivery, handleCardPress]
+    [handleDeleteDelivery, handleCardPress, handleEditDelivery]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (
@@ -183,6 +220,13 @@ export default function App() {
       </Modal>
       <Modal visible={manualInputVisible} animationType="slide" transparent={true} presentationStyle="pageSheet">
         <ManualInputScreen onSave={handleManualInputSave} onCancel={() => setManualInputVisible(false)} />
+      </Modal>
+      <Modal visible={editingDelivery !== null} animationType="slide" transparent={true} presentationStyle="pageSheet">
+        <ManualInputScreen
+          initialData={editingDelivery}
+          onSave={handleEditSave}
+          onCancel={() => setEditingDelivery(null)}
+        />
       </Modal>
     </View>
   );
