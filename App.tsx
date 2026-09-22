@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -24,6 +24,7 @@ import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
+import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder } from './src/database/db';
 
 const primaryDark = '#001F3F';
 const accentOrange = '#FF6B00';
@@ -37,6 +38,19 @@ export default function App() {
   const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
+  useEffect(() => {
+    const loadDeliveries = async () => {
+      try {
+        const stored = await getAllDeliveries();
+        setDeliveries(stored);
+        console.log('Loaded', stored.length, 'deliveries from SQLite');
+      } catch (error) {
+        console.error('Failed to load deliveries:', error);
+      }
+    };
+    loadDeliveries();
+  }, []);
+
   const handleLanguageChange = useCallback((lang: 'ar' | 'en' | 'fr') => {
     setLanguageState(lang);
     setLanguage(lang);
@@ -48,7 +62,8 @@ export default function App() {
       setProcessing(true);
       try {
         const newDelivery = await processNewDeliveryFromPhoto(photoUri);
-        setDeliveries((prev) => [...prev, newDelivery]);
+        await saveDelivery(newDelivery);
+        setDeliveries((prev) => [newDelivery, ...prev]);
       } catch (error) {
         console.error('Error processing delivery:', error);
         Alert.alert(t('addDelivery'), 'فشل في معالجة الكولية. يرجى المحاولة مرة أخرى.');
@@ -67,6 +82,7 @@ export default function App() {
     setProcessing(true);
     try {
       const optimized = await mockOptimizeRoute(deliveries);
+      await updateDeliveryOrder(optimized);
       setDeliveries(optimized);
     } catch (error) {
       console.error('Error optimizing route:', error);
@@ -84,8 +100,14 @@ export default function App() {
     await openRouteInMapsApp(deliveries);
   }, [deliveries]);
 
-  const handleDeleteDelivery = useCallback((id: string) => {
-    setDeliveries((prev) => prev.filter((d) => d.id !== id));
+  const handleDeleteDelivery = useCallback(async (id: string) => {
+    try {
+      await deleteDelivery(id);
+      setDeliveries((prev) => prev.filter((d) => d.id !== id));
+    } catch (error) {
+      console.error('Delete error:', error);
+      Alert.alert('خطأ', 'فشل في حذف الكولية.');
+    }
   }, []);
 
   const handleCardPress = useCallback(async (delivery: Delivery) => {
@@ -128,25 +150,23 @@ export default function App() {
 
   const handleManualInputSave = useCallback(
     async (data: { name: string; address: string; phone: string }) => {
-      setManualInputVisible(false);
-      setProcessing(true);
       try {
-        const coords = await mockGeocode(data.address);
+        const detected = findCityInAddress(data.address);
         const newDelivery: Delivery = {
           id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-          name: data.name,
-          address: data.address,
-          phone: data.phone,
-          latitude: coords.lat,
-          longitude: coords.lon,
+          name: data.name || 'غير معروف',
+          address: data.address || 'غير معروف',
+          phone: data.phone || 'غير معروف',
+          latitude: detected.lat,
+          longitude: detected.lon,
           order: 0,
         };
-        setDeliveries((prev) => [...prev, newDelivery]);
+        await saveDelivery(newDelivery);
+        setDeliveries((prev) => [newDelivery, ...prev]);
+        setManualInputVisible(false);
       } catch (error) {
-        console.error('Error adding manual delivery:', error);
-        Alert.alert('خطأ', 'فشل في إضافة الكولية. يرجى المحاولة مرة أخرى.');
-      } finally {
-        setProcessing(false);
+        console.error('Save error:', error);
+        Alert.alert('خطأ', 'فشل في حفظ البيانات.');
       }
     },
     []

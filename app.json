@@ -41,7 +41,8 @@
         {
           "cameraPermission": "Allow AFD Delivery to access your camera to photograph packages."
         }
-      ]
+      ],
+      "expo-sqlite"
     ],
     "extra": {
       "eas": {
