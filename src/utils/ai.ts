@@ -49,15 +49,34 @@ function getRandomElement<T>(arr: T[]): T {
 }
 
 export const mockOCR = async (photoUri: string): Promise<string> => {
+  let combinedText = '';
+  
+  // Strategy 1: Default (Latin script)
   try {
-    const result = await TextRecognition.recognize(photoUri);
-    const fullText = result.text || '';
-    console.log('OCR Result:', fullText);
-    return fullText;
-  } catch (error) {
-    console.error('OCR Error:', error);
-    return '';
+    const latinResult = await TextRecognition.recognize(photoUri);
+    if (latinResult?.text) {
+      combinedText += latinResult.text + '\n';
+      console.log('Latin OCR:', latinResult.text);
+    }
+  } catch (e) {
+    console.log('Latin OCR failed:', e);
   }
+
+  // Strategy 2: Arabic script
+  try {
+    const arabicResult = await TextRecognition.recognize(photoUri, {
+      script: 'Arabic',
+    });
+    if (arabicResult?.text) {
+      combinedText += arabicResult.text + '\n';
+      console.log('Arabic OCR:', arabicResult.text);
+    }
+  } catch (e) {
+    console.log('Arabic OCR failed:', e);
+  }
+
+  console.log('Combined OCR Result:', combinedText);
+  return combinedText.trim();
 };
 
 export async function mockExtractData(): Promise<{
@@ -73,55 +92,47 @@ export async function mockExtractData(): Promise<{
   };
 }
 
-const MOROCCAN_CITIES: Record<string, { lat: number; lon: number }> = {
-  casablanca: { lat: 33.5731, lon: -7.5898 },
-  "الدار البيضاء": { lat: 33.5731, lon: -7.5898 },
-  rabat: { lat: 34.0209, lon: -6.8416 },
-  "الرباط": { lat: 34.0209, lon: -6.8416 },
-  marrakech: { lat: 31.6295, lon: -7.9811 },
-  "مراكش": { lat: 31.6295, lon: -7.9811 },
-  fes: { lat: 34.0331, lon: -5.0003 },
-  "فاس": { lat: 34.0331, lon: -5.0003 },
-  fez: { lat: 34.0331, lon: -5.0003 },
-  tangier: { lat: 35.7595, lon: -5.8340 },
-  tanger: { lat: 35.7595, lon: -5.8340 },
-  "طنجة": { lat: 35.7595, lon: -5.8340 },
-  agadir: { lat: 30.4278, lon: -9.5981 },
-  "أكادير": { lat: 30.4278, lon: -9.5981 },
-  meknes: { lat: 33.8935, lon: -5.5473 },
-  "مكناس": { lat: 33.8935, lon: -5.5473 },
-  oujda: { lat: 34.6814, lon: -1.9086 },
-  "وجدة": { lat: 34.6814, lon: -1.9086 },
-  kenitra: { lat: 34.2610, lon: -6.5802 },
-  "القنيطرة": { lat: 34.2610, lon: -6.5802 },
-  tetouan: { lat: 35.5889, lon: -5.3626 },
-  "تطوان": { lat: 35.5889, lon: -5.3626 },
-  safi: { lat: 32.2994, lon: -9.2372 },
-  "آسفي": { lat: 32.2994, lon: -9.2372 },
-  "el jadida": { lat: 33.2316, lon: -8.5007 },
-  "الجديدة": { lat: 33.2316, lon: -8.5007 },
-  "beni mellal": { lat: 32.3373, lon: -6.3498 },
-  "بني ملال": { lat: 32.3373, lon: -6.3498 },
-  nador: { lat: 35.1681, lon: -2.9335 },
-  "الناظور": { lat: 35.1681, lon: -2.9335 },
-  settat: { lat: 33.0010, lon: -7.6166 },
-  "سطات": { lat: 33.0010, lon: -7.6166 },
-  larache: { lat: 35.1932, lon: -6.1557 },
-  "العرائش": { lat: 35.1932, lon: -6.1557 },
-  khouribga: { lat: 32.8815, lon: -6.9097 },
-  "خريبكة": { lat: 32.8815, lon: -6.9097 },
-  guelmin: { lat: 28.9870, lon: -10.0574 },
-  "كلميم": { lat: 28.9870, lon: -10.0574 },
-  laayoune: { lat: 27.1536, lon: -13.2033 },
-  "العيون": { lat: 27.1536, lon: -13.2033 },
-  dakhla: { lat: 23.7162, lon: -15.9347 },
-  "الداخلة": { lat: 23.7162, lon: -15.9347 },
+const cityMap: Record<string, { lat: number; lon: number }> = {
+  // Arabic names
+  'طنجة': { lat: 35.7595, lon: -5.8340 },
+  'الرباط': { lat: 34.0209, lon: -6.8416 },
+  'الدار البيضاء': { lat: 33.5731, lon: -7.5898 },
+  'فاس': { lat: 34.0331, lon: -5.0003 },
+  'مراكش': { lat: 31.6295, lon: -7.9811 },
+  'أكادير': { lat: 30.4278, lon: -9.5981 },
+  'مكناس': { lat: 33.8935, lon: -5.5473 },
+  'وجدة': { lat: 34.6867, lon: -1.9114 },
+  'تطوان': { lat: 35.5785, lon: -5.3684 },
+  'القنيطرة': { lat: 34.2610, lon: -6.5802 },
+  'سلا': { lat: 34.0531, lon: -6.7985 },
+  'الجديدة': { lat: 33.2316, lon: -8.5007 },
+  'بني ملال': { lat: 32.3373, lon: -6.3498 },
+  'الناظور': { lat: 35.1681, lon: -2.9287 },
+  'خريبكة': { lat: 32.8811, lon: -6.9063 },
+  // Latin names (uppercase + lowercase)
+  'TANGER': { lat: 35.7595, lon: -5.8340 },
+  'tanger': { lat: 35.7595, lon: -5.8340 },
+  'RABAT': { lat: 34.0209, lon: -6.8416 },
+  'rabat': { lat: 34.0209, lon: -6.8416 },
+  'CASABLANCA': { lat: 33.5731, lon: -7.5898 },
+  'casablanca': { lat: 33.5731, lon: -7.5898 },
+  'FES': { lat: 34.0331, lon: -5.0003 },
+  'fes': { lat: 34.0331, lon: -5.0003 },
+  'MARRAKECH': { lat: 31.6295, lon: -7.9811 },
+  'marrakech': { lat: 31.6295, lon: -7.9811 },
+  'AGADIR': { lat: 30.4278, lon: -9.5981 },
+  'agadir': { lat: 30.4278, lon: -9.5981 },
+  'MEKNES': { lat: 33.8935, lon: -5.5473 },
+  'meknes': { lat: 33.8935, lon: -5.5473 },
+  'OUJDA': { lat: 34.6867, lon: -1.9114 },
+  'oujda': { lat: 34.6867, lon: -1.9114 },
+  'TETOUAN': { lat: 35.5785, lon: -5.3684 },
+  'tetouan': { lat: 35.5785, lon: -5.3684 },
 };
 
 function findCityInAddress(address: string): { lat: number; lon: number } | null {
-  const lowerAddress = address.toLowerCase();
-  for (const [city, coords] of Object.entries(MOROCCAN_CITIES)) {
-    if (lowerAddress.includes(city.toLowerCase())) {
+  for (const [city, coords] of Object.entries(cityMap)) {
+    if (address.includes(city)) {
       console.log(`Found city in address: ${city}`);
       return coords;
     }
