@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Delivery } from '../types';
@@ -10,7 +10,7 @@ interface Props {
   onEdit?: (delivery: Delivery) => void;
 }
 
-export const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) => {
+const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -145,3 +145,5 @@ const styles = StyleSheet.create({
   },
   copyText: { fontSize: 16 },
 });
+
+export const DeliveryCardMemo = memo(DeliveryCard);

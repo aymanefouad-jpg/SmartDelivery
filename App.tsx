@@ -20,7 +20,7 @@ import {
   findCityInAddress,
 } from './src/utils/ai';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
-import { DeliveryCard } from './src/components/DeliveryCard';
+import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
@@ -154,7 +154,7 @@ export default function App() {
 
   const renderDelivery = useCallback(
     ({ item }: { item: Delivery }) => (
-      <DeliveryCard 
+      <DeliveryCardMemo 
         delivery={item} 
         onDelete={handleDeleteDelivery}
         onPress={handleCardPress}
@@ -216,7 +216,7 @@ export default function App() {
         }
       />
       <Modal visible={cameraVisible} animationType="slide" transparent={true}>
-        <CameraScreen onCapture={handleCapture} onCancel={() => setCameraVisible(false)} />
+        <CameraScreen onCapture={handleCapture} onCancel={() => setCameraVisible(false)} processing={processing} />
       </Modal>
       <Modal visible={manualInputVisible} animationType="slide" transparent={true} presentationStyle="pageSheet">
         <ManualInputScreen onSave={handleManualInputSave} onCancel={() => setManualInputVisible(false)} />

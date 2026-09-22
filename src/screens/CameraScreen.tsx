@@ -1,13 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { t } from '../i18n';
 
+const accentOrange = '#FF6B00';
+
 interface Props {
   onCapture: (photoUri: string) => void;
   onCancel: () => void;
+  processing?: boolean;
 }
 
 export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
@@ -53,7 +56,7 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const result = await cameraRef.current.takePictureAsync({ quality: 0.7 });
+      const result = await cameraRef.current.takePictureAsync({ quality: 0.5 });
       if (result?.uri) {
         onCapture(result.uri);
       }
@@ -76,10 +79,16 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
           </TouchableOpacity>
         </View>
         <View style={styles.shutterContainer}>
-          <TouchableOpacity style={styles.shutter} onPress={takePicture}>
+          <TouchableOpacity style={styles.shutter} onPress={takePicture} disabled={processing}>
             <View style={styles.shutterInner} />
           </TouchableOpacity>
         </View>
+        {processing && (
+          <View style={styles.processingOverlay}>
+            <ActivityIndicator size="large" color={accentOrange} />
+            <Text style={styles.processingText}>جاري قراءة النص...</Text>
+          </View>
+        )}
       </CameraView>
     </View>
   );
@@ -136,5 +145,22 @@ const styles = StyleSheet.create({
     height: 65,
     borderRadius: 35,
     backgroundColor: '#fff',
+  },
+  processingOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    zIndex: 100,
+  },
+  processingText: {
+    color: '#fff',
+    fontSize: 16,
+    marginTop: 12,
+    fontWeight: 'bold',
   },
 });

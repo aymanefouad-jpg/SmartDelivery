@@ -1,6 +1,4 @@
 import { Delivery } from '../types';
-import { scanETazkiraFront } from 'rn-af-identity-ocr';
-import { getCityByLabel } from 'country-city-multilanguage';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
 
 const MOCK_ADDRESSES = [
@@ -49,34 +47,19 @@ function getRandomElement<T>(arr: T[]): T {
 }
 
 export const mockOCR = async (photoUri: string): Promise<string> => {
-  let combinedText = '';
-  
-  // Strategy 1: Default (Latin script)
-  try {
-    const latinResult = await TextRecognition.recognize(photoUri);
-    if (latinResult?.text) {
-      combinedText += latinResult.text + '\n';
-      console.log('Latin OCR:', latinResult.text);
-    }
-  } catch (e) {
-    console.log('Latin OCR failed:', e);
-  }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 3000);
 
-  // Strategy 2: Arabic script
   try {
-    const arabicResult = await TextRecognition.recognize(photoUri, {
-      script: 'Arabic',
-    });
-    if (arabicResult?.text) {
-      combinedText += arabicResult.text + '\n';
-      console.log('Arabic OCR:', arabicResult.text);
-    }
-  } catch (e) {
-    console.log('Arabic OCR failed:', e);
+    const result = await TextRecognition.recognize(photoUri);
+    clearTimeout(timeoutId);
+    console.log('OCR Result:', result?.text || '');
+    return result?.text || '';
+  } catch (error) {
+    clearTimeout(timeoutId);
+    console.log('OCR failed or timed out:', error);
+    return '';
   }
-
-  console.log('Combined OCR Result:', combinedText);
-  return combinedText.trim();
 };
 
 export async function mockExtractData(): Promise<{
