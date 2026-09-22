@@ -1,6 +1,6 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useRef, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Image,
+  View, Text, StyleSheet, TouchableOpacity,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { t } from '../i18n';
@@ -12,7 +12,6 @@ interface Props {
 
 export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
   const [permission, requestPermission] = useCameraPermissions();
-  const [photo, setPhoto] = useState<string | null>(null);
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
@@ -47,32 +46,10 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
     if (cameraRef.current) {
       const result = await cameraRef.current.takePictureAsync({ quality: 0.7 });
       if (result?.uri) {
-        setPhoto(result.uri);
+        onCapture(result.uri);
       }
     }
   };
-
-  if (photo) {
-    return (
-      <View style={styles.container}>
-        <Image source={{ uri: photo }} style={styles.preview} />
-        <View style={styles.bottomBar}>
-          <TouchableOpacity
-            style={[styles.button, styles.retakeButton]}
-            onPress={() => setPhoto(null)}
-          >
-            <Text style={styles.buttonText}>{t('retake')}</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.button, styles.confirmButton]}
-            onPress={() => onCapture(photo)}
-          >
-            <Text style={styles.buttonText}>✓ {t('capture')}</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <View style={styles.container}>
@@ -97,13 +74,6 @@ const styles = StyleSheet.create({
   camera: { flex: 1, justifyContent: 'space-between' },
   overlay: { padding: 20, alignItems: 'flex-start' },
   text: { color: '#fff', fontSize: 16, textAlign: 'center', marginTop: 50, padding: 20 },
-  preview: { flex: 1, resizeMode: 'contain' },
-  bottomBar: {
-    flexDirection: 'row-reverse',
-    justifyContent: 'space-around',
-    padding: 20,
-    backgroundColor: '#000',
-  },
   button: {
     paddingVertical: 15,
     paddingHorizontal: 30,
@@ -117,8 +87,6 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: 'rgba(255,255,255,0.3)',
   },
-  retakeButton: { backgroundColor: '#FF9500' },
-  confirmButton: { backgroundColor: '#34C759' },
   buttonText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
   shutterContainer: { alignItems: 'center', paddingBottom: 40 },
   shutter: {
