@@ -1,4 +1,4 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity,
 } from 'react-native';
@@ -12,6 +12,7 @@ interface Props {
 
 export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
   const [permission, requestPermission] = useCameraPermissions();
+  const [flash, setFlash] = useState<'on' | 'off' | 'auto'>('auto');
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
@@ -19,6 +20,14 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
       requestPermission();
     }
   }, [permission]);
+
+  const toggleFlash = () => {
+    setFlash((prev) => {
+      if (prev === 'auto') return 'on';
+      if (prev === 'on') return 'off';
+      return 'auto';
+    });
+  };
 
   if (!permission) {
     return (
@@ -53,8 +62,15 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
 
   return (
     <View style={styles.container}>
-      <CameraView style={styles.camera} ref={cameraRef} facing="back">
+      <CameraView style={styles.camera} ref={cameraRef} facing="back" flash={flash}>
         <View style={styles.overlay}>
+          <View style={styles.topBar}>
+            <TouchableOpacity style={styles.flashButton} onPress={toggleFlash}>
+              <Text style={styles.flashIcon}>
+                {flash === 'on' ? '⚡' : flash === 'off' ? '⚡⃠' : '⚡A'}
+              </Text>
+            </TouchableOpacity>
+          </View>
           <TouchableOpacity style={styles.cancelButton} onPress={onCancel}>
             <Text style={styles.buttonText}>✕</Text>
           </TouchableOpacity>
@@ -73,6 +89,24 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#000' },
   camera: { flex: 1, justifyContent: 'space-between' },
   overlay: { padding: 20, alignItems: 'flex-start' },
+  topBar: {
+    position: 'absolute',
+    top: 40,
+    left: 20,
+    zIndex: 10,
+  },
+  flashButton: {
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  flashIcon: {
+    fontSize: 24,
+    color: '#fff',
+  },
   text: { color: '#fff', fontSize: 16, textAlign: 'center', marginTop: 50, padding: 20 },
   button: {
     paddingVertical: 15,
