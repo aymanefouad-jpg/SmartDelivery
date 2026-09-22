@@ -161,7 +161,7 @@ export async function mockGeocode(address: string): Promise<{
   lat: number;
   lon: number;
 }> {
-  await sleep(500);
+  await sleep(200);
   
   const cityCoords = findCityInAddress(address);
   if (cityCoords) {
@@ -170,23 +170,6 @@ export async function mockGeocode(address: string): Promise<{
       lat: cityCoords.lat + (Math.random() - 0.5) * offset * 2,
       lon: cityCoords.lon + (Math.random() - 0.5) * offset * 2,
     };
-  }
-
-  try {
-    const cityData = getCityByLabel('MA');
-    if (cityData && cityData.length > 0) {
-      for (const city of cityData) {
-        if (address.toLowerCase().includes(city.label.toLowerCase())) {
-          const offset = 0.03;
-          return {
-            lat: city.latitude + (Math.random() - 0.5) * offset * 2,
-            lon: city.longitude + (Math.random() - 0.5) * offset * 2,
-          };
-        }
-      }
-    }
-  } catch (error) {
-    console.log('country-city-multilanguage lookup failed:', error);
   }
 
   const baseLat = 33.5731;
@@ -223,6 +206,52 @@ export async function geocodeAddress(address: string): Promise<{
   }
 }
 
+/**
+ * Geocode an address using Nominatim (OpenStreetMap) - FREE, no API key required.
+ * Restricted to Morocco for accuracy.
+ */
+export const geocodeWithNominatim = async (address: string): Promise<{ lat: number; lon: number } | null> => {
+  if (!address || address.trim().length < 3) {
+    return null;
+  }
+
+  try {
+    const cleanAddress = address.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanAddress)}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en&addressdetails=1`;
+    
+    console.log('Nominatim query:', url);
+
+    const response = await fetch(url, {
+      headers: {
+        'User-Agent': 'AFD-Delivery-App/1.0',
+      },
+    });
+
+    if (!response.ok) return null;
+
+    const data = await response.json();
+
+    if (data && data.length > 0) {
+      const result = data[0];
+      
+      // Verify the result is in Morocco
+      if (result.address && result.address.country_code && result.address.country_code !== 'ma') {
+        console.log('Nominatim result is not in Morocco, ignoring.');
+        return null;
+      }
+
+      return {
+        lat: parseFloat(result.lat),
+        lon: parseFloat(result.lon),
+      };
+    }
+    return null;
+  } catch (error) {
+    console.error('Nominatim error:', error);
+    return null;
+  }
+};
+
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
   const extractedText = await mockOCR(photoUri);
   console.log('OCR Result:', extractedText);
@@ -236,6 +265,7 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const addressMatch = extractedText.match(/(?:Adresse|العنوان)[:\s]+([^\n]+)/i);
   const address = addressMatch ? addressMatch[1].trim() : extractedText.slice(0, 100);
 
+  // Priority 1: Try to detect city from OCR text (fastest, works offline)
   const cityResult = findCityInAddress(extractedText);
   let coords: { lat: number; lon: number };
   let geocodeMethod = 'Mock';
@@ -245,11 +275,14 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     geocodeMethod = 'CityDetection';
     console.log('Using city coordinates from OCR text:', cityResult.city);
   } else {
-    const realCoords = await geocodeAddress(address);
-    if (realCoords) {
-      coords = realCoords;
+    // Priority 2: Use Nominatim for precise geocoding (requires internet)
+    const nominatimCoords = await geocodeWithNominatim(address);
+    if (nominatimCoords) {
+      coords = nominatimCoords;
       geocodeMethod = 'Nominatim';
+      console.log('Using Nominatim geocoding for:', address);
     } else {
+      // Priority 3: Fallback to mock geocoding
       coords = await mockGeocode(address);
       geocodeMethod = 'Mock';
     }
