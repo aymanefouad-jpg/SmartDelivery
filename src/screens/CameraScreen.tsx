@@ -56,9 +56,13 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
 
   const takePicture = async () => {
     if (cameraRef.current) {
-      const result = await cameraRef.current.takePictureAsync({ quality: 0.5 });
-      if (result?.uri) {
-        onCapture(result.uri);
+      try {
+        const result = await cameraRef.current.takePictureAsync({ quality: 0.3 });
+        if (result?.uri) {
+          onCapture(result.uri);
+        }
+      } catch (error) {
+        console.error('takePictureAsync error:', error);
       }
     }
   };

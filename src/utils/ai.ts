@@ -47,16 +47,17 @@ function getRandomElement<T>(arr: T[]): T {
 }
 
 export const mockOCR = async (photoUri: string): Promise<string> => {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 3000);
-
   try {
-    const result = await TextRecognition.recognize(photoUri);
-    clearTimeout(timeoutId);
+    // Use Promise.race for timeout - max 5 seconds
+    const result = await Promise.race([
+      TextRecognition.recognize(photoUri),
+      new Promise<never>((_, reject) => 
+        setTimeout(() => reject(new Error('OCR timeout')), 5000)
+      )
+    ]);
     console.log('OCR Result:', result?.text || '');
     return result?.text || '';
   } catch (error) {
-    clearTimeout(timeoutId);
     console.log('OCR failed or timed out:', error);
     return '';
   }
@@ -277,29 +278,37 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     }
   }
 
-  // 3. Try Nominatim FIRST with the full text
+  // 3. Extract city from OCR text FIRST
+  const cityResult = findCityInAddress(extractedText);
+  const detectedCity = cityResult.city !== 'Unknown' ? cityResult.city : null;
+
+  // 3. Try Nominatim with CITY + "Morocco" for accurate location
   let coords: { lat: number; lon: number } | null = null;
   let geocodeSource = 'none';
 
-  const fullTextClean = extractedText.replace(/\n/g, ' ').substring(0, 200);
-  try {
-    coords = await geocodeWithNominatim(fullTextClean);
-    if (coords) {
-      geocodeSource = 'nominatim-full';
+  if (detectedCity) {
+    try {
+      const cityQuery = `${detectedCity}, Morocco`;
+      console.log('Nominatim query with city:', cityQuery);
+      coords = await geocodeWithNominatim(cityQuery);
+      if (coords) {
+        geocodeSource = `nominatim-city-${detectedCity}`;
+      }
+    } catch (error) {
+      console.error('Geocode with Nominatim failed:', error);
     }
-  } catch (error) {
-    console.error('Geocode with Nominatim failed:', error);
   }
 
-  // 4. If Nominatim fails, try city detection
+  // 4. If Nominatim fails, use city coordinates from findCityInAddress
+  if (!coords && cityResult.city !== 'Unknown') {
+    coords = { lat: cityResult.lat, lon: cityResult.lon };
+    geocodeSource = `city-coords-${cityResult.city}`;
+  }
+
+  // 5. Last resort: Casablanca
   if (!coords) {
-    try {
-      const detected = findCityInAddress(extractedText);
-      coords = { lat: detected.lat, lon: detected.lon };
-      geocodeSource = `city-detection-${detected.city}`;
-    } catch (error) {
-      console.error('City detection failed:', error);
-    }
+    coords = { lat: 33.5731, lon: -7.5898 };
+    geocodeSource = 'fallback-casablanca';
   }
 
   const address = extractedText.split('\n')[0].substring(0, 80) || 'غير معروف';
@@ -309,11 +318,11 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
 
   return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-    name,
+    name: name || 'غير معروف',
     address,
     phone,
-    latitude: coords ? coords.lat : null,
-    longitude: coords ? coords.lon : null,
+    latitude: coords.lat,
+    longitude: coords.lon,
     order: 0,
   };
 };
