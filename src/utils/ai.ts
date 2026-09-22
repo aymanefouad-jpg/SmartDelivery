@@ -1,7 +1,7 @@
 import { Delivery } from '../types';
 import { scanETazkiraFront } from 'rn-af-identity-ocr';
 import { getCityByLabel } from 'country-city-multilanguage';
-import recognizeText from '@react-native-ml-kit/text-recognition';
+import TextRecognition from '@react-native-ml-kit/text-recognition';
 
 const MOCK_ADDRESSES = [
   'الدار البيضاء، شارع محمد الخامس، رقم 123',
@@ -50,36 +50,14 @@ function getRandomElement<T>(arr: T[]): T {
 
 export const mockOCR = async (photoUri: string): Promise<string> => {
   try {
-    const result = await scanETazkiraFront(photoUri);
-    const resultText = (result as any)?.text;
-    if (resultText) {
-      return resultText;
-    }
+    const result = await TextRecognition.recognize(photoUri);
+    const fullText = result.text || '';
+    console.log('OCR Result:', fullText);
+    return fullText;
   } catch (error) {
-    console.error('ID Card OCR Error:', error);
+    console.error('OCR Error:', error);
+    return '';
   }
-
-  try {
-    const mlResult = await recognizeText.recognize(photoUri);
-    const mlText = (mlResult as any)?.text;
-    if (mlText) {
-      return mlText;
-    }
-  } catch (error) {
-    console.error('ML Kit OCR Error:', error);
-  }
-
-  const mockAddresses = [
-    'الدار البيضاء، شارع محمد الخامس، رقم 123',
-    'الرباط، حي أكدال، زنقة 5، رقم 45',
-    'مراكش، المدينة العتيقة، درب المشور، رقم 78',
-    'فاس، Ville Nouvelle، شارع الحسن الثاني، رقم 200',
-    'طنجة، ملاباطا، شارع الأمير مولاي رشيد، رقم 12',
-    'أكادير، تالبرجت، زنقة ابن سينا، رقم 34',
-    'مكناس، حميس، شارع الجيش الملكي، رقم 56',
-    'وجدة، حي الجامعة، زنقة عبد الكريم الخطابي، رقم 89',
-  ];
-  return mockAddresses[Math.floor(Math.random() * mockAddresses.length)];
 };
 
 export async function mockExtractData(): Promise<{
@@ -230,19 +208,26 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const addressMatch = extractedText.match(/(?:Adresse|العنوان)[:\s]+([^\n]+)/i);
   const address = addressMatch ? addressMatch[1].trim() : extractedText.slice(0, 100);
 
-  const realCoords = await geocodeAddress(address);
+  const cityCoords = findCityInAddress(extractedText);
   let coords: { lat: number; lon: number };
-  let usedReal = false;
+  let geocodeMethod = 'Mock';
 
-  if (realCoords) {
-    coords = realCoords;
-    usedReal = true;
+  if (cityCoords) {
+    coords = cityCoords;
+    geocodeMethod = 'CityDetection';
+    console.log('Using city coordinates from OCR text');
   } else {
-    coords = await mockGeocode(address);
-    usedReal = false;
+    const realCoords = await geocodeAddress(address);
+    if (realCoords) {
+      coords = realCoords;
+      geocodeMethod = 'Nominatim';
+    } else {
+      coords = await mockGeocode(address);
+      geocodeMethod = 'Mock';
+    }
   }
 
-  console.log('Geocoding method:', usedReal ? 'Nominatim' : 'Mock');
+  console.log('Geocoding method:', geocodeMethod);
 
   return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
