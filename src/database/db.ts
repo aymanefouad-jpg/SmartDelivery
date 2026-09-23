@@ -46,6 +46,12 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
     CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone);
     CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name);
   `);
+  // Migration for existing installs: store the captured label photo URI.
+  try {
+    await database.execAsync(`ALTER TABLE deliveries ADD COLUMN photo_uri TEXT`);
+  } catch {
+    // Column already exists — ignore.
+  }
 };
 
 // Delivery operations
@@ -53,8 +59,8 @@ export const saveDelivery = async (delivery: Delivery): Promise<void> => {
   const database = await getDB();
   await database.runAsync(
     `INSERT OR REPLACE INTO deliveries 
-    (id, name, address, phone, latitude, longitude, order_index, status, amount, order_number, notes, created_at, updated_at, synced)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, name, address, phone, latitude, longitude, order_index, status, amount, order_number, notes, created_at, updated_at, synced, photo_uri)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       delivery.id,
       delivery.name,
@@ -70,6 +76,7 @@ export const saveDelivery = async (delivery: Delivery): Promise<void> => {
       Date.now(),
       Date.now(),
       0,
+      delivery.imagePath ?? null,
     ]
   );
 };
@@ -87,6 +94,7 @@ export const getAllDeliveries = async (): Promise<Delivery[]> => {
     latitude: row.latitude,
     longitude: row.longitude,
     order: row.order_index,
+    imagePath: row.photo_uri ?? undefined,
   }));
 };
 

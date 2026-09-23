@@ -1,5 +1,8 @@
 import { Delivery } from '../types';
 import TextRecognition from '@react-native-ml-kit/text-recognition';
+// NOTE: expo-file-system v57 moved copyAsync/documentDirectory to /legacy —
+// the package root only exports the new File/Directory API (no copy).
+import * as FileSystem from 'expo-file-system/legacy';
 
 const MOCK_ADDRESSES = [
   'الدار البيضاء، شارع محمد الخامس، رقم 123',
@@ -260,6 +263,25 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
 };
 
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
+  // Save the image to permanent storage
+  let savedImagePath = photoUri;
+  try {
+    const fileName = `delivery_${Date.now()}.jpg`;
+    const permanentPath = `${FileSystem.documentDirectory}deliveries/`;
+
+    // Create directory if it doesn't exist
+    const dirInfo = await FileSystem.getInfoAsync(permanentPath);
+    if (!dirInfo.exists) {
+      await FileSystem.makeDirectoryAsync(permanentPath, { intermediates: true });
+    }
+
+    const newPath = `${permanentPath}${fileName}`;
+    await FileSystem.copyAsync({ from: photoUri, to: newPath });
+    savedImagePath = newPath;
+  } catch {
+    // Silent fallback: keep the original cache URI (low-end perf: no logs)
+  }
+
   let extractedText: string | null = null;
   try {
     extractedText = await mockOCR(photoUri);
@@ -268,21 +290,46 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
       throw new Error('لم يتم التعرف على أي نص من الصورة.');
     }
 
-  // 1. Extract phone number (Moroccan format)
-  const phoneMatch = extractedText.match(/(\+?212|0)\s?[6-7](\s?\d{2}){4}/);
-  const phone = phoneMatch ? phoneMatch[0].replace(/\s/g, '') : 'غير معروف';
+  // 1. Extract phone number (Moroccan format, tolerant to spaces/dots/dashes)
+  const phoneMatch = extractedText.match(/(\+?212|0)[\s.\-]*[6-7](?:[\s.\-]*\d){8}/);
+  const phone = phoneMatch ? phoneMatch[0].replace(/[\s.\-]/g, '') : 'غير معروف';
 
-  // 2. Extract name
+  // 2. Extract name (requested patterns) + next-line fallback.
+  // ML Kit often puts the value on the line AFTER "Destinataire :" so a
+  // same-line-only regex returns empty -> "غير معروف".
   let name = 'غير معروف';
   const namePatterns = [
-    /(?:Destinataire|المرسل إليه)[:\s]+([^\n]+)/i,
-    /(?:Client|Nom|الاسم)[:\s]+([^\n]+)/i,
+    /Destinataire\s*:?\s*([^\n]+)/i,
+    /Client\s*:?\s*([^\n]+)/i,
+    /Nom\s*:?\s*([^\n]+)/i,
+    /المرسل\s*إليه\s*:?\s*([^\n]+)/i,
+    /الاسم\s*:?\s*([^\n]+)/i,
   ];
+  const isJunkName = (s: string): boolean =>
+    !s || /^[:;\-|_.,\s]+$/.test(s) || /^\d[\d\s/.\-]*$/.test(s) || s.length < 2;
   for (const pattern of namePatterns) {
     const match = extractedText.match(pattern);
-    if (match && match[1]) {
-      name = match[1].trim().substring(0, 30);
+    if (match && match[1] && !isJunkName(match[1].trim())) {
+      name = match[1].trim().substring(0, 50);
       break;
+    }
+    // Fallback: label found but value on the next line
+    // e.g. "Destinataire :\nAymane Fouad"
+    if (match) {
+      const labelOnly = new RegExp(pattern.source.replace(/\(\[\^\\n\]\+\)/, ''), 'i');
+      const labelMatch = extractedText.match(labelOnly);
+      if (labelMatch && labelMatch.index !== undefined) {
+        const afterLabel = extractedText
+          .slice(labelMatch.index + labelMatch[0].length)
+          .split('\n')
+          .map((l) => l.trim())
+          .filter((l) => l.length > 0);
+        const nextLine = afterLabel[0] || '';
+        if (!isJunkName(nextLine)) {
+          name = nextLine.substring(0, 50);
+          break;
+        }
+      }
     }
   }
 
@@ -312,8 +359,34 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     coords = { lat: 33.5731, lon: -7.5898 };
   }
 
-  const address = extractedText.split('\n')[0].substring(0, 80) || 'غير معروف';
+  // Address: prefer known Moroccan city, else first meaningful line
+  // (skips dates / amounts / label headers so "09/0926" never becomes address).
+  let address = 'غير معروف';
+  // First, try to find a known Moroccan city
+  const cityMatch = findCityInAddress(extractedText);
+  if (cityMatch.city !== 'Unknown') {
+    address = cityMatch.city;
+  } else {
+    // Otherwise, find lines that aren't dates/numbers/labels
+    const lines = extractedText.split('\n')
+      .map((l: string) => l.trim())
+      .filter((l: string) =>
+        l.length > 3 &&
+        l.length < 100 &&
+        !/^\d+$/.test(l) &&
+        !/\d{2}\/\d{2}\/\d{2,4}/.test(l) &&
+        !/^\d{1,2}\/\d{3,4}$/.test(l) &&
+        !/^\d+\s*(DH|MAD|درهم)$/i.test(l) &&
+        !/DIGYLOG|Expéditeur|Destinataire|Hub|Commande|Order/i.test(l)
+      );
+    if (lines.length > 0) {
+      address = lines[0].substring(0, 80);
+    }
+  }
 
+  // FIX 2: persist the captured (compressed) image to permanent app storage
+  // so the photo is saved instead of being discarded after OCR.
+  const deliveryId = `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`;
   const delivery: Delivery = {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     name: name || 'غير معروف',
@@ -322,6 +395,7 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     latitude: coords.lat,
     longitude: coords.lon,
     order: 0,
+    imagePath: savedImagePath,
   };
   return delivery;
   } finally {

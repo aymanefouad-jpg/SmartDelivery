@@ -1,5 +1,5 @@
 import React, { memo } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Linking, Alert, Image } from 'react-native';
 import * as Clipboard from 'expo-clipboard';
 import { Delivery } from '../types';
 
@@ -79,6 +79,13 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) 
           </TouchableOpacity>
         </View>
         <Text style={styles.address}>{delivery.address}</Text>
+        {delivery.imagePath && (
+          <Image
+            source={{ uri: delivery.imagePath }}
+            style={styles.deliveryImage}
+            resizeMode="cover"
+          />
+        )}
         <View style={styles.phoneRow}>
           <TouchableOpacity onPress={handleCall} style={styles.phoneButton}>
             <Text style={styles.phoneText}>📞 {delivery.phone}</Text>
@@ -129,6 +136,19 @@ const styles = StyleSheet.create({
   editButton: { padding: 4 },
   editText: { fontSize: 18 },
   address: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'right' },
+  thumb: {
+    width: 64,
+    height: 64,
+    borderRadius: 8,
+    marginTop: 6,
+    backgroundColor: '#eef2f6',
+  },
+  deliveryImage: {
+    width: '100%',
+    height: 100,
+    borderRadius: 8,
+    marginTop: 8,
+  },
   phoneRow: { flexDirection: 'row-reverse', alignItems: 'center', gap: 6, marginTop: 4 },
   phoneButton: {
     backgroundColor: '#e6f2ff',
