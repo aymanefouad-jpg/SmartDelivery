@@ -47,19 +47,29 @@ function getRandomElement<T>(arr: T[]): T {
 }
 
 export const mockOCR = async (photoUri: string): Promise<string> => {
+  let result: { text?: string } | null = null;
+  let rawText: string | null = null;
+  let truncated: string | null = null;
   try {
     // Use Promise.race for timeout - max 5 seconds
-    const result = await Promise.race([
+    result = await Promise.race([
       TextRecognition.recognize(photoUri),
-      new Promise<never>((_, reject) => 
+      new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error('OCR timeout')), 5000)
       )
     ]);
-    console.log('OCR Result:', result?.text || '');
-    return result?.text || '';
-  } catch (error) {
-    console.log('OCR failed or timed out:', error);
+    rawText = result?.text || '';
+    // Limit OCR text to 1000 chars max to avoid huge strings in memory
+    truncated = rawText.length > 1000 ? rawText.substring(0, 1000) : rawText;
+    return truncated;
+  } catch {
     return '';
+  } finally {
+    // Explicitly free references for low-memory devices
+    result = null;
+    rawText = null;
+    truncated = null;
+    photoUri = null as unknown as string;
   }
 };
 
@@ -151,7 +161,6 @@ export const findCityInAddress = (text: string): { lat: number; lon: number; cit
   const lowerText = text.toLowerCase();
   for (const [cityName, coords] of Object.entries(cityMap)) {
     if (lowerText.includes(cityName.toLowerCase())) {
-      console.log('City detected:', cityName);
       return { ...coords, city: cityName };
     }
   }
@@ -219,8 +228,6 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
   try {
     const cleanAddress = address.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
     const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanAddress)}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en&addressdetails=1`;
-    
-    console.log('Nominatim query:', url);
 
     const response = await fetch(url, {
       headers: {
@@ -237,7 +244,6 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
       
       // Verify the result is in Morocco
       if (result.address && result.address.country_code && result.address.country_code !== 'ma') {
-        console.log('Nominatim result is not in Morocco, ignoring.');
         return null;
       }
 
@@ -254,11 +260,13 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
 };
 
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
-  const extractedText = await mockOCR(photoUri);
+  let extractedText: string | null = null;
+  try {
+    extractedText = await mockOCR(photoUri);
 
-  if (!extractedText || extractedText.trim() === '') {
-    throw new Error('لم يتم التعرف على أي نص من الصورة.');
-  }
+    if (!extractedText || extractedText.trim() === '') {
+      throw new Error('لم يتم التعرف على أي نص من الصورة.');
+    }
 
   // 1. Extract phone number (Moroccan format)
   const phoneMatch = extractedText.match(/(\+?212|0)\s?[6-7](\s?\d{2}){4}/);
@@ -284,39 +292,29 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
 
   // 3. Try Nominatim with CITY + "Morocco" for accurate location
   let coords: { lat: number; lon: number } | null = null;
-  let geocodeSource = 'none';
 
   if (detectedCity) {
     try {
       const cityQuery = `${detectedCity}, Morocco`;
-      console.log('Nominatim query with city:', cityQuery);
       coords = await geocodeWithNominatim(cityQuery);
-      if (coords) {
-        geocodeSource = `nominatim-city-${detectedCity}`;
-      }
-    } catch (error) {
-      console.error('Geocode with Nominatim failed:', error);
+    } catch {
+      // Silent fallback to city coords on low-end devices
     }
   }
 
   // 4. If Nominatim fails, use city coordinates from findCityInAddress
   if (!coords && cityResult.city !== 'Unknown') {
     coords = { lat: cityResult.lat, lon: cityResult.lon };
-    geocodeSource = `city-coords-${cityResult.city}`;
   }
 
   // 5. Last resort: Casablanca
   if (!coords) {
     coords = { lat: 33.5731, lon: -7.5898 };
-    geocodeSource = 'fallback-casablanca';
   }
 
   const address = extractedText.split('\n')[0].substring(0, 80) || 'غير معروف';
 
-  console.log('Geocode source:', geocodeSource);
-  console.log('Final coords:', coords);
-
-  return {
+  const delivery: Delivery = {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     name: name || 'غير معروف',
     address,
@@ -325,6 +323,12 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     longitude: coords.lon,
     order: 0,
   };
+  return delivery;
+  } finally {
+    // Free OCR string immediately — don't keep image text in memory
+    extractedText = null;
+    photoUri = null as unknown as string;
+  }
 };
 
 export async function mockOptimizeRoute(deliveries: Delivery[]): Promise<Delivery[]> {

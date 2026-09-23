@@ -31,24 +31,34 @@ const accentOrange = '#FF6B00';
 const langActiveBg = '#fff2e6';
 
 export default function App() {
+  // OPT4: Limit state size — store ONLY small Delivery objects (text fields).
+  // Never store full image URIs / bitmaps / OCR strings in state.
+  // Images are compressed to URI, passed to OCR, then discarded immediately.
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
+  // OPT7: Single simple loading flag (no separate isLoading complexity)
   const [processing, setProcessing] = useState(false);
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualInputVisible, setManualInputVisible] = useState(false);
   const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
+  // OPT5: Every useEffect has a cleanup function (isMounted guard)
   useEffect(() => {
+    let mounted = true;
     const loadDeliveries = async () => {
       try {
         const stored = await getAllDeliveries();
-        setDeliveries(stored);
-        console.log('Loaded', stored.length, 'deliveries from SQLite');
-      } catch (error) {
-        console.error('Failed to load deliveries:', error);
+        if (mounted) {
+          setDeliveries(stored);
+        }
+      } catch {
+        // Silent on low-end devices
       }
     };
     loadDeliveries();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const handleLanguageChange = useCallback((lang: 'ar' | 'en' | 'fr') => {
@@ -60,14 +70,17 @@ export default function App() {
     async (photoUri: string) => {
       setCameraVisible(false);
       setProcessing(true);
+      let uri: string | null = photoUri;
       try {
-        const newDelivery = await processNewDeliveryFromPhoto(photoUri);
+        const newDelivery = await processNewDeliveryFromPhoto(uri);
         await saveDelivery(newDelivery);
         setDeliveries((prev) => [newDelivery, ...prev]);
-      } catch (error) {
-        console.error('Error processing delivery:', error);
+      } catch {
         Alert.alert(t('addDelivery'), 'فشل في معالجة الكولية. يرجى المحاولة مرة أخرى.');
       } finally {
+        // OPT4: Free image URI reference immediately after OCR — don't keep it
+        uri = null;
+        photoUri = null as unknown as string;
         setProcessing(false);
       }
     },
@@ -84,8 +97,7 @@ export default function App() {
       const optimized = await mockOptimizeRoute(deliveries);
       await updateDeliveryOrder(optimized);
       setDeliveries(optimized);
-    } catch (error) {
-      console.error('Error optimizing route:', error);
+    } catch {
       Alert.alert(t('optimize'), 'فشل في الترتيب. يرجى المحاولة مرة أخرى.');
     } finally {
       setProcessing(false);
@@ -104,8 +116,7 @@ export default function App() {
     try {
       await deleteDelivery(id);
       setDeliveries((prev) => prev.filter((d) => d.id !== id));
-    } catch (error) {
-      console.error('Delete error:', error);
+    } catch {
       Alert.alert('خطأ', 'فشل في حذف الكولية.');
     }
   }, []);
@@ -138,8 +149,7 @@ export default function App() {
               : d
           )
         );
-      } catch (error) {
-        console.error('Error editing delivery:', error);
+      } catch {
         Alert.alert('خطأ', 'فشل في تعديل الكولية. يرجى المحاولة مرة أخرى.');
       } finally {
         setProcessing(false);
@@ -164,8 +174,7 @@ export default function App() {
         await saveDelivery(newDelivery);
         setDeliveries((prev) => [newDelivery, ...prev]);
         setManualInputVisible(false);
-      } catch (error) {
-        console.error('Save error:', error);
+      } catch {
         Alert.alert('خطأ', 'فشل في حفظ البيانات.');
       }
     },
@@ -198,7 +207,7 @@ export default function App() {
 
   return (
     <View style={styles.container}>
-      <StatusBar barStyle="light-content" backgroundColor={primaryDark} />
+      <StatusBar style="light" />
       <View style={styles.header}>
         <Text style={styles.title}>AFD Delivery</Text>
         <View style={styles.langContainer}>
@@ -229,25 +238,37 @@ export default function App() {
         renderItem={renderDelivery}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
+        initialNumToRender={5}
+        maxToRenderPerBatch={5}
+        windowSize={5}
+        removeClippedSubviews={true}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
             <Text style={styles.emptyText}>{t('noDeliveries')}</Text>
           </View>
         }
       />
-      <Modal visible={cameraVisible} animationType="slide" transparent={true}>
-        <CameraScreen onCapture={handleCapture} onCancel={() => setCameraVisible(false)} processing={processing} />
-      </Modal>
-      <Modal visible={manualInputVisible} animationType="slide" transparent={true} presentationStyle="pageSheet">
-        <ManualInputScreen onSave={handleManualInputSave} onCancel={() => setManualInputVisible(false)} />
-      </Modal>
-      <Modal visible={editingDelivery !== null} animationType="slide" transparent={true} presentationStyle="pageSheet">
-        <ManualInputScreen
-          initialData={editingDelivery}
-          onSave={handleEditSave}
-          onCancel={() => setEditingDelivery(null)}
-        />
-      </Modal>
+      {/* OPT3: Unmount screens when not in use — conditional rendering destroys
+          the camera when closed, freeing memory on 2GB devices */}
+      {cameraVisible && (
+        <Modal visible={true} animationType="slide" transparent={true} onRequestClose={() => setCameraVisible(false)}>
+          <CameraScreen onCapture={handleCapture} onCancel={() => setCameraVisible(false)} processing={processing} />
+        </Modal>
+      )}
+      {manualInputVisible && (
+        <Modal visible={true} animationType="slide" transparent={true} presentationStyle="pageSheet" onRequestClose={() => setManualInputVisible(false)}>
+          <ManualInputScreen onSave={handleManualInputSave} onCancel={() => setManualInputVisible(false)} />
+        </Modal>
+      )}
+      {editingDelivery !== null && (
+        <Modal visible={true} animationType="slide" transparent={true} presentationStyle="pageSheet" onRequestClose={() => setEditingDelivery(null)}>
+          <ManualInputScreen
+            initialData={editingDelivery}
+            onSave={handleEditSave}
+            onCancel={() => setEditingDelivery(null)}
+          />
+        </Modal>
+      )}
     </View>
   );
 }

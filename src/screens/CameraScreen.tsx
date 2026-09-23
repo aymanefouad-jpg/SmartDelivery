@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, ActivityIndicator,
 } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
+import { compressForOCR } from '../utils/cameraHelper';
 import { t } from '../i18n';
 
 const accentOrange = '#FF6B00';
@@ -13,15 +14,21 @@ interface Props {
   processing?: boolean;
 }
 
-export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
+export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel, processing }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<'on' | 'off' | 'auto'>('auto');
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
-    if (!permission?.granted) {
+    let mounted = true;
+    if (!permission?.granted && mounted) {
       requestPermission();
     }
+    return () => {
+      mounted = false;
+      // Release camera ref on unmount for low-memory devices
+      (cameraRef as any).current = null;
+    };
   }, [permission]);
 
   const toggleFlash = () => {
@@ -57,12 +64,15 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel }) => {
   const takePicture = async () => {
     if (cameraRef.current) {
       try {
-        const result = await cameraRef.current.takePictureAsync({ quality: 0.3 });
-        if (result?.uri) {
-          onCapture(result.uri);
+        const raw = await cameraRef.current.takePictureAsync({ quality: 0.3 });
+        if (raw?.uri) {
+          // IMMEDIATELY compress: resize to 800px MAX, quality 0.4.
+          // Return ONLY the file URI — never keep the bitmap in memory.
+          const compressedUri = await compressForOCR(raw.uri);
+          onCapture(compressedUri);
         }
-      } catch (error) {
-        console.error('takePictureAsync error:', error);
+      } catch {
+        // Silent on low-end devices — avoid console overhead
       }
     }
   };
