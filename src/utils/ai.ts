@@ -317,66 +317,65 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const phoneMatch = extractedText.match(/(\+?212|0)[\s.\-]*[6-7](?:[\s.\-]*\d){8}/);
   const phone = phoneMatch ? phoneMatch[0].replace(/[\s.\-]/g, '') : 'غير معروف';
 
-  // Extract name - handle "Destinataire :" followed by newline, and OCR errors
+  // Extract name - STRICT: only take the line AFTER "Destinataire"
   let name = 'غير معروف';
-  const lines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+  const allLines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
 
-  // Strategy 1: Look for the line after "Destinataire"
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    // Check if this line contains "Destinataire" (with OCR error tolerance)
+  console.log('=== ALL LINES ===');
+  allLines.forEach((l, i) => console.log(`[${i}] ${l}`));
+  console.log('=== END LINES ===');
+
+  // List of words that indicate a COMPANY name (to reject)
+  const companyKeywords = /transport|messagerie|shop|digylog|exp[eé]diteur|rizal|hub|glo|commande|order|facture|invoice|tva|ice|rc|if|patente/i;
+
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+
+    // Look for "Destinataire" (tolerant to OCR errors)
     if (/dest[il1]nat[ae]ir[ea]/i.test(line)) {
-      // If the name is on the same line after ":"
-      const sameLine = line.match(/:\s*(.+)/);
-      if (sameLine && sameLine[1].trim().length > 2) {
-        name = sameLine[1].trim().substring(0, 50);
-        break;
+      // Case 1: name on the same line after ":"
+      const sameLineMatch = line.match(/:\s*(.+)/);
+      if (sameLineMatch && sameLineMatch[1].trim().length > 2) {
+        const candidate = sameLineMatch[1].trim();
+        if (!companyKeywords.test(candidate)) {
+          name = candidate.substring(0, 50);
+          console.log('Name found (same line):', name);
+          break;
+        }
       }
-      // Otherwise, take the NEXT line as the name
-      if (i + 1 < lines.length) {
-        const nextLine = lines[i + 1];
-        // Make sure it's not a label or a number
+
+      // Case 2: name on the NEXT line
+      if (i + 1 < allLines.length) {
+        const nextLine = allLines[i + 1].trim();
         if (nextLine.length > 2 &&
             nextLine.length < 50 &&
             !/^\d+$/.test(nextLine) &&
-            !/exp[eé]diteur/i.test(nextLine)) {
+            !companyKeywords.test(nextLine)) {
           name = nextLine.substring(0, 50);
+          console.log('Name found (next line):', name);
           break;
         }
       }
     }
   }
 
-  // Strategy 2: If still unknown, look for any line with a capitalized name-like pattern (2+ words)
+  // If still not found, try Arabic label
   if (name === 'غير معروف') {
-    for (const line of lines) {
-      // Skip labels, numbers, and long lines
-      if (line.length > 3 &&
-          line.length < 40 &&
-          !/^\d+$/.test(line) &&
-          !/exp[eé]diteur|dest[il1]nat|hub|tanger|digylog|commande|order|dh|mad|درهم/i.test(line)) {
-        // Check if it looks like a name (has uppercase letters or Arabic characters)
-        if (/[A-Z][a-z]+/.test(line) || /[\u0600-\u06FF]/.test(line)) {
-          name = line.substring(0, 50);
-          console.log('Name found via strategy 2:', name);
+    for (let i = 0; i < allLines.length; i++) {
+      const line = allLines[i];
+      if (/المرسل\s*إليه|الاسم/i.test(line)) {
+        const match = line.match(/:\s*(.+)/);
+        if (match && match[1].trim().length > 2) {
+          name = match[1].trim().substring(0, 50);
           break;
         }
-      }
-    }
-  }
-
-  // Strategy 3: Try the original regex patterns as last resort
-  if (name === 'غير معروف') {
-    const namePatterns = [
-      /Destinataire\s*:?\s*\n\s*([^\n]+)/i,
-      /Destinataire\s*:?\s*([^\n]+)/i,
-      /المرسل\s*إليه\s*:?\s*\n?\s*([^\n]+)/i,
-    ];
-    for (const pattern of namePatterns) {
-      const match = extractedText.match(pattern);
-      if (match && match[1] && match[1].trim().length > 2) {
-        name = match[1].trim().substring(0, 50);
-        break;
+        if (i + 1 < allLines.length) {
+          const nextLine = allLines[i + 1].trim();
+          if (nextLine.length > 2 && nextLine.length < 50) {
+            name = nextLine.substring(0, 50);
+            break;
+          }
+        }
       }
     }
   }
