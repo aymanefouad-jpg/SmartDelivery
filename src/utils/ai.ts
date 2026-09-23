@@ -458,11 +458,22 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   }
 };
 
-export async function mockOptimizeRoute(deliveries: Delivery[]): Promise<Delivery[]> {
-  await sleep(800);
-  const shuffled = [...deliveries].sort(() => Math.random() - 0.5);
-  return shuffled.map((delivery, index) => ({
-    ...delivery,
-    order: index + 1,
-  }));
-}
+export const mockOptimizeRoute = async (deliveries: Delivery[]): Promise<Delivery[]> => {
+  if (deliveries.length < 2) return deliveries;
+
+  // Sort by city (group same-city deliveries together)
+  // If no city, keep original order
+  const sorted = [...deliveries].sort((a, b) => {
+    const aAddr = (a.arabicAddress || a.address || '').toLowerCase();
+    const bAddr = (b.arabicAddress || b.address || '').toLowerCase();
+
+    // Extract city-like words
+    const aCity = aAddr.match(/tanger|tangier|طنجة|casablanca|الدار البيضاء|rabat|الرباط|fes|فاس|marrakech|مراكش|agadir|أكادير/i)?.[0] || '';
+    const bCity = bAddr.match(/tanger|tangier|طنجة|casablanca|الدار البيضاء|rabat|الرباط|fes|فاس|marrakech|مراكش|agadir|أكادير/i)?.[0] || '';
+
+    return aCity.localeCompare(bCity);
+  });
+
+  // Assign order numbers
+  return sorted.map((d, index) => ({ ...d, order: index + 1 }));
+};
