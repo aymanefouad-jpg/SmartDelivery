@@ -16,6 +16,7 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
       id TEXT PRIMARY KEY NOT NULL,
       name TEXT NOT NULL,
       address TEXT NOT NULL,
+      arabic_address TEXT,
       phone TEXT NOT NULL,
       latitude REAL,
       longitude REAL,
@@ -52,6 +53,12 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
   } catch {
     // Column already exists — ignore.
   }
+  // Migration for existing installs: store the manually entered Arabic address.
+  try {
+    await database.execAsync(`ALTER TABLE deliveries ADD COLUMN arabic_address TEXT`);
+  } catch {
+    // Column already exists — ignore.
+  }
 };
 
 // Delivery operations
@@ -59,12 +66,13 @@ export const saveDelivery = async (delivery: Delivery): Promise<void> => {
   const database = await getDB();
   await database.runAsync(
     `INSERT OR REPLACE INTO deliveries 
-    (id, name, address, phone, latitude, longitude, order_index, status, amount, order_number, notes, created_at, updated_at, synced, photo_uri)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    (id, name, address, arabic_address, phone, latitude, longitude, order_index, status, amount, order_number, notes, created_at, updated_at, synced, photo_uri)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       delivery.id,
       delivery.name,
       delivery.address,
+      delivery.arabicAddress ?? null,
       delivery.phone,
       delivery.latitude ?? null,
       delivery.longitude ?? null,
@@ -90,12 +98,24 @@ export const getAllDeliveries = async (): Promise<Delivery[]> => {
     id: row.id,
     name: row.name,
     address: row.address,
+    arabicAddress: row.arabic_address ?? undefined,
     phone: row.phone,
     latitude: row.latitude,
     longitude: row.longitude,
     order: row.order_index,
     imagePath: row.photo_uri ?? undefined,
   }));
+};
+
+export const updateDeliveryArabicAddress = async (
+  id: string,
+  arabicAddress: string
+): Promise<void> => {
+  const database = await getDB();
+  await database.runAsync(
+    'UPDATE deliveries SET arabic_address = ?, updated_at = ? WHERE id = ?',
+    [arabicAddress, Date.now(), id]
+  );
 };
 
 export const deleteDelivery = async (id: string): Promise<void> => {

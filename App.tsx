@@ -25,7 +25,7 @@ import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
-import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder } from './src/database/db';
+import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder, updateDeliveryArabicAddress } from './src/database/db';
 
 const primaryDark = '#001F3F';
 const accentOrange = '#FF6B00';
@@ -139,13 +139,17 @@ export default function App() {
 
   const handleSaveArabicAddress = useCallback(() => {
     if (editingArabicAddress) {
+      const id = editingArabicAddress.id;
+      const value = arabicAddressInput;
       setDeliveries((prev) =>
         prev.map((d) =>
-          d.id === editingArabicAddress.id
-            ? { ...d, arabicAddress: arabicAddressInput }
+          d.id === id
+            ? { ...d, arabicAddress: value }
             : d
         )
       );
+      // Persist to SQLite so it survives app reload (fire-and-forget)
+      updateDeliveryArabicAddress(id, value).catch(() => {});
       setEditingArabicAddress(null);
       setArabicAddressInput('');
     }
