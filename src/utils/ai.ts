@@ -109,6 +109,8 @@ const cityMap: Record<string, { lat: number; lon: number }> = {
   // Latin names (uppercase + lowercase)
   'TANGER': { lat: 35.7595, lon: -5.8340 },
   'tanger': { lat: 35.7595, lon: -5.8340 },
+  'tangier': { lat: 35.7595, lon: -5.8340 },
+  'tangiers': { lat: 35.7595, lon: -5.8340 },
   'RABAT': { lat: 34.0209, lon: -6.8416 },
   'rabat': { lat: 34.0209, lon: -6.8416 },
   'CASABLANCA': { lat: 33.5731, lon: -7.5898 },
@@ -136,6 +138,7 @@ export const findCityInAddress = (text: string): { lat: number; lon: number; cit
     'طنجة': { lat: 35.7595, lon: -5.8340 },
     'tanger': { lat: 35.7595, lon: -5.8340 },
     'tangier': { lat: 35.7595, lon: -5.8340 },
+    'tangiers': { lat: 35.7595, lon: -5.8340 },
     'طنجه': { lat: 35.7595, lon: -5.8340 },
     'الرباط': { lat: 34.0209, lon: -6.8416 },
     'rabat': { lat: 34.0209, lon: -6.8416 },
@@ -310,42 +313,21 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   const phoneMatch = extractedText.match(/(\+?212|0)[\s.\-]*[6-7](?:[\s.\-]*\d){8}/);
   const phone = phoneMatch ? phoneMatch[0].replace(/[\s.\-]/g, '') : 'غير معروف';
 
-  // 2. Extract name (requested patterns) + next-line fallback.
-  // ML Kit often puts the value on the line AFTER "Destinataire :" so a
-  // same-line-only regex returns empty -> "غير معروف".
+  // Extract name - handle "Destinataire :" followed by newline
   let name = 'غير معروف';
   const namePatterns = [
+    /Destinataire\s*:?\s*\n\s*([^\n]+)/i,
     /Destinataire\s*:?\s*([^\n]+)/i,
-    /Client\s*:?\s*([^\n]+)/i,
-    /Nom\s*:?\s*([^\n]+)/i,
-    /المرسل\s*إليه\s*:?\s*([^\n]+)/i,
-    /الاسم\s*:?\s*([^\n]+)/i,
+    /Client\s*:?\s*\n?\s*([^\n]+)/i,
+    /Nom\s*:?\s*\n?\s*([^\n]+)/i,
+    /المرسل\s*إليه\s*:?\s*\n?\s*([^\n]+)/i,
+    /الاسم\s*:?\s*\n?\s*([^\n]+)/i,
   ];
-  const isJunkName = (s: string): boolean =>
-    !s || /^[:;\-|_.,\s]+$/.test(s) || /^\d[\d\s/.\-]*$/.test(s) || s.length < 2;
   for (const pattern of namePatterns) {
     const match = extractedText.match(pattern);
-    if (match && match[1] && !isJunkName(match[1].trim())) {
+    if (match && match[1] && match[1].trim().length > 2) {
       name = match[1].trim().substring(0, 50);
       break;
-    }
-    // Fallback: label found but value on the next line
-    // e.g. "Destinataire :\nAymane Fouad"
-    if (match) {
-      const labelOnly = new RegExp(pattern.source.replace(/\(\[\^\\n\]\+\)/, ''), 'i');
-      const labelMatch = extractedText.match(labelOnly);
-      if (labelMatch && labelMatch.index !== undefined) {
-        const afterLabel = extractedText
-          .slice(labelMatch.index + labelMatch[0].length)
-          .split('\n')
-          .map((l) => l.trim())
-          .filter((l) => l.length > 0);
-        const nextLine = afterLabel[0] || '';
-        if (!isJunkName(nextLine)) {
-          name = nextLine.substring(0, 50);
-          break;
-        }
-      }
     }
   }
 

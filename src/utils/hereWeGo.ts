@@ -9,7 +9,7 @@ export const openRouteInMapsApp = async (deliveries: Delivery[]): Promise<void> 
   }
 
   const delivery = deliveries[0];
-  const address = delivery.address || '';
+  const address = delivery.arabicAddress || delivery.address || '';
   const name = delivery.name || '';
 
   if (address.trim().length < 2) {

@@ -2,6 +2,7 @@ export interface Delivery {
   id: string;
   name: string;
   address: string;
+  arabicAddress?: string;
   phone: string;
   latitude: number;
   longitude: number;

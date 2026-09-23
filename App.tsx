@@ -9,6 +9,7 @@ import {
   Alert,
   Modal,
   Linking,
+  TextInput,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -40,6 +41,8 @@ export default function App() {
   const [cameraVisible, setCameraVisible] = useState(false);
   const [manualInputVisible, setManualInputVisible] = useState(false);
   const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
+  const [editingArabicAddress, setEditingArabicAddress] = useState<Delivery | null>(null);
+  const [arabicAddressInput, setArabicAddressInput] = useState('');
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
   // OPT5: Every useEffect has a cleanup function (isMounted guard)
@@ -129,6 +132,25 @@ export default function App() {
     setEditingDelivery(delivery);
   }, []);
 
+  const handleEditArabicAddress = useCallback((delivery: Delivery) => {
+    setEditingArabicAddress(delivery);
+    setArabicAddressInput(delivery.arabicAddress || '');
+  }, []);
+
+  const handleSaveArabicAddress = useCallback(() => {
+    if (editingArabicAddress) {
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === editingArabicAddress.id
+            ? { ...d, arabicAddress: arabicAddressInput }
+            : d
+        )
+      );
+      setEditingArabicAddress(null);
+      setArabicAddressInput('');
+    }
+  }, [editingArabicAddress, arabicAddressInput]);
+
   const handleEditSave = useCallback(
     async (data: { name: string; address: string; phone: string }) => {
       if (!editingDelivery) return;
@@ -188,9 +210,10 @@ export default function App() {
         onDelete={handleDeleteDelivery}
         onPress={handleCardPress}
         onEdit={handleEditDelivery}
+        onEditArabicAddress={handleEditArabicAddress}
       />
     ),
-    [handleDeleteDelivery, handleCardPress, handleEditDelivery]
+    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (
@@ -267,6 +290,43 @@ export default function App() {
             onSave={handleEditSave}
             onCancel={() => setEditingDelivery(null)}
           />
+        </Modal>
+      )}
+      {/* Arabic address input — conditionally mounted like the other modals (OPT3) */}
+      {editingArabicAddress !== null && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="slide"
+          onRequestClose={() => setEditingArabicAddress(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>إضافة عنوان عربي</Text>
+              <TextInput
+                style={styles.modalInput}
+                value={arabicAddressInput}
+                onChangeText={setArabicAddressInput}
+                placeholder="مثال: فرساي كزناية طنجة"
+                placeholderTextColor="#999"
+                multiline
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setEditingArabicAddress(null)}
+                >
+                  <Text style={styles.modalButtonText}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={handleSaveArabicAddress}
+                >
+                  <Text style={styles.modalButtonText}>حفظ</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
         </Modal>
       )}
     </View>
@@ -395,5 +455,55 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: 'center',
     paddingHorizontal: 30,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 20,
+    width: '85%',
+  },
+  modalTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#001F3F',
+    marginBottom: 15,
+    textAlign: 'right',
+  },
+  modalInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 16,
+    textAlign: 'right',
+    minHeight: 60,
+    marginBottom: 15,
+  },
+  modalButtons: {
+    flexDirection: 'row-reverse',
+    gap: 10,
+  },
+  modalButton: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    alignItems: 'center',
+  },
+  cancelButton: {
+    backgroundColor: '#999',
+  },
+  saveButton: {
+    backgroundColor: '#FF6B00',
+  },
+  modalButtonText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 16,
   },
 });

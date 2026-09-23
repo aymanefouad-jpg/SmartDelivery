@@ -8,9 +8,10 @@ interface Props {
   onDelete?: (id: string) => void;
   onPress?: (delivery: Delivery) => void;
   onEdit?: (delivery: Delivery) => void;
+  onEditArabicAddress?: (delivery: Delivery) => void;
 }
 
-const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) => {
+const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -86,6 +87,14 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit }) 
             resizeMode="cover"
           />
         )}
+        <TouchableOpacity
+          onPress={() => onEditArabicAddress?.(delivery)}
+          style={styles.arabicAddressButton}
+        >
+          <Text style={styles.arabicAddressText}>
+            {delivery.arabicAddress ? `📍 ${delivery.arabicAddress}` : '➕ إضافة عنوان عربي'}
+          </Text>
+        </TouchableOpacity>
         <View style={styles.phoneRow}>
           <TouchableOpacity onPress={handleCall} style={styles.phoneButton}>
             <Text style={styles.phoneText}>📞 {delivery.phone}</Text>
@@ -164,6 +173,19 @@ const styles = StyleSheet.create({
     borderRadius: 8,
   },
   copyText: { fontSize: 16 },
+  arabicAddressButton: {
+    backgroundColor: '#fff2e6',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginTop: 6,
+    alignSelf: 'flex-end',
+  },
+  arabicAddressText: {
+    fontSize: 13,
+    color: '#FF6B00',
+    fontWeight: 'bold',
+  },
 });
 
 export const DeliveryCardMemo = memo(DeliveryCard);
