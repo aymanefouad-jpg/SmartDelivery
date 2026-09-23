@@ -14,6 +14,7 @@ import {
 import { StatusBar } from 'expo-status-bar';
 
 import { Delivery } from './src/types';
+import type { DeliveryStatus } from './src/types';
 import {
   processNewDeliveryFromPhoto,
   mockOptimizeRoute,
@@ -132,6 +133,16 @@ export default function App() {
     setEditingDelivery(delivery);
   }, []);
 
+  const handleStatusChange = useCallback(async (id: string, status: DeliveryStatus) => {
+    try {
+      setDeliveries((prev) =>
+        prev.map((d) => (d.id === id ? { ...d, status } : d))
+      );
+    } catch (error) {
+      console.error('Failed to update status:', error);
+    }
+  }, []);
+
   const handleEditArabicAddress = useCallback((delivery: Delivery) => {
     setEditingArabicAddress(delivery);
     setArabicAddressInput(delivery.arabicAddress || '');
@@ -215,9 +226,10 @@ export default function App() {
         onPress={handleCardPress}
         onEdit={handleEditDelivery}
         onEditArabicAddress={handleEditArabicAddress}
+        onStatusChange={handleStatusChange}
       />
     ),
-    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress]
+    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress, handleStatusChange]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (

@@ -9,9 +9,10 @@ interface Props {
   onPress?: (delivery: Delivery) => void;
   onEdit?: (delivery: Delivery) => void;
   onEditArabicAddress?: (delivery: Delivery) => void;
+  onStatusChange?: (id: string, status: 'NEW' | 'DELIVERED' | 'FAILED') => void;
 }
 
-const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress }) => {
+const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -103,6 +104,35 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
             <Text style={styles.copyText}>📋</Text>
           </TouchableOpacity>
         </View>
+        {delivery.status && (
+          <View style={styles.statusRow}>
+            <View style={[
+              styles.statusBadge,
+              delivery.status === 'DELIVERED' ? styles.statusDelivered :
+              delivery.status === 'FAILED' ? styles.statusFailed :
+              styles.statusNew
+            ]}>
+              <Text style={styles.statusText}>
+                {delivery.status === 'DELIVERED' ? '✓ تم التسليم' :
+                 delivery.status === 'FAILED' ? '✗ فشل' : '⏳ جديد'}
+              </Text>
+            </View>
+          </View>
+        )}
+        <View style={styles.statusButtonsRow}>
+          <TouchableOpacity
+            style={[styles.statusButton, styles.deliveredButton]}
+            onPress={() => onStatusChange?.(delivery.id, 'DELIVERED')}
+          >
+            <Text style={styles.statusButtonText}>✓ تم</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.statusButton, styles.failedButton]}
+            onPress={() => onStatusChange?.(delivery.id, 'FAILED')}
+          >
+            <Text style={styles.statusButtonText}>✗ فشل</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -186,6 +216,17 @@ const styles = StyleSheet.create({
     color: '#FF6B00',
     fontWeight: 'bold',
   },
+  statusRow: { marginTop: 6, alignItems: 'flex-end' },
+  statusBadge: { paddingVertical: 4, paddingHorizontal: 10, borderRadius: 12 },
+  statusNew: { backgroundColor: '#E3F2FD' },
+  statusDelivered: { backgroundColor: '#E8F5E9' },
+  statusFailed: { backgroundColor: '#FFEBEE' },
+  statusText: { fontSize: 12, fontWeight: 'bold', color: '#333' },
+  statusButtonsRow: { flexDirection: 'row-reverse', gap: 8, marginTop: 8 },
+  statusButton: { paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8, flex: 1, alignItems: 'center' },
+  deliveredButton: { backgroundColor: '#34C759' },
+  failedButton: { backgroundColor: '#FF3B30' },
+  statusButtonText: { color: '#fff', fontWeight: 'bold', fontSize: 13 },
 });
 
 export const DeliveryCardMemo = memo(DeliveryCard);
