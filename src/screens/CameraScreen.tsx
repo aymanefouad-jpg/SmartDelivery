@@ -17,19 +17,23 @@ interface Props {
 export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel, processing }) => {
   const [permission, requestPermission] = useCameraPermissions();
   const [flash, setFlash] = useState<'on' | 'off' | 'auto'>('auto');
+  const [isCameraReady, setIsCameraReady] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
   const cameraRef = useRef<CameraView>(null);
 
   useEffect(() => {
-    let mounted = true;
-    if (!permission?.granted && mounted) {
+    if (!permission?.granted) {
       requestPermission();
     }
+  }, [permission]);
+
+  // Release camera ref only on true unmount (separate effect so changing
+  // permission does NOT null the ref while the camera is visible)
+  useEffect(() => {
     return () => {
-      mounted = false;
-      // Release camera ref on unmount for low-memory devices
       (cameraRef as any).current = null;
     };
-  }, [permission]);
+  }, []);
 
   const toggleFlash = () => {
     setFlash((prev) => {
@@ -62,24 +66,34 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel, processing 
   }
 
   const takePicture = async () => {
-    if (cameraRef.current) {
-      try {
-        const raw = await cameraRef.current.takePictureAsync({ quality: 0.3 });
-        if (raw?.uri) {
-          // IMMEDIATELY compress: resize to 800px MAX, quality 0.4.
-          // Return ONLY the file URI — never keep the bitmap in memory.
-          const compressedUri = await compressForOCR(raw.uri);
-          onCapture(compressedUri);
-        }
-      } catch {
-        // Silent on low-end devices — avoid console overhead
+    if (!cameraRef.current || !isCameraReady || processing || isCapturing) {
+      return;
+    }
+    setIsCapturing(true);
+    try {
+      const raw = await cameraRef.current.takePictureAsync({ quality: 0.3, exif: false });
+      if (raw?.uri) {
+        // IMMEDIATELY compress: resize to 800px MAX, quality 0.4.
+        // Return ONLY the file URI — never keep the bitmap in memory.
+        const compressedUri = await compressForOCR(raw.uri);
+        onCapture(compressedUri);
       }
+    } catch {
+      // Silent on low-end devices — avoid console overhead
+    } finally {
+      setIsCapturing(false);
     }
   };
 
   return (
     <View style={styles.container}>
-      <CameraView style={styles.camera} ref={cameraRef} facing="back" flash={flash}>
+      <CameraView
+        style={styles.camera}
+        ref={cameraRef}
+        facing="back"
+        flash={flash}
+        onCameraReady={() => setIsCameraReady(true)}
+      >
         <View style={styles.overlay}>
           <View style={styles.topBar}>
             <TouchableOpacity style={styles.flashButton} onPress={toggleFlash}>
@@ -93,9 +107,18 @@ export const CameraScreen: React.FC<Props> = ({ onCapture, onCancel, processing 
           </TouchableOpacity>
         </View>
         <View style={styles.shutterContainer}>
-          <TouchableOpacity style={styles.shutter} onPress={takePicture} disabled={processing}>
-            <View style={styles.shutterInner} />
+          <TouchableOpacity
+            style={[styles.shutter, (!isCameraReady || isCapturing || processing) && styles.shutterDisabled]}
+            onPress={takePicture}
+            disabled={!isCameraReady || isCapturing || processing}
+          >
+            {isCapturing ? (
+              <ActivityIndicator size="large" color="#fff" />
+            ) : (
+              <View style={styles.shutterInner} />
+            )}
           </TouchableOpacity>
+          {!isCameraReady && <Text style={styles.readyText}>Preparing camera…</Text>}
         </View>
         {processing && (
           <View style={styles.processingOverlay}>
@@ -159,6 +182,14 @@ const styles = StyleSheet.create({
     height: 65,
     borderRadius: 35,
     backgroundColor: '#fff',
+  },
+  shutterDisabled: {
+    opacity: 0.5,
+  },
+  readyText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 8,
   },
   processingOverlay: {
     position: 'absolute',
