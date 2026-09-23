@@ -229,8 +229,17 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
   }
 
   try {
+    // Clean and normalize the address
     const cleanAddress = address.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(cleanAddress)}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en&addressdetails=1`;
+    
+    // Add "Morocco" if not present
+    const query = cleanAddress.toLowerCase().includes('morocco') || cleanAddress.includes('المغرب')
+      ? cleanAddress
+      : `${cleanAddress}, Morocco`;
+
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en&addressdetails=1`;
+    
+    console.log('Nominatim URL:', url);
 
     const response = await fetch(url, {
       headers: {
@@ -238,23 +247,30 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
       },
     });
 
-    if (!response.ok) return null;
+    if (!response.ok) {
+      console.log('Nominatim HTTP error:', response.status);
+      return null;
+    }
 
     const data = await response.json();
+    console.log('Nominatim result:', JSON.stringify(data).substring(0, 300));
 
     if (data && data.length > 0) {
       const result = data[0];
       
       // Verify the result is in Morocco
       if (result.address && result.address.country_code && result.address.country_code !== 'ma') {
+        console.log('Result not in Morocco, ignoring.');
         return null;
       }
 
+      console.log('Nominatim coords:', result.lat, result.lon);
       return {
         lat: parseFloat(result.lat),
         lon: parseFloat(result.lon),
       };
     }
+    console.log('Nominatim returned no results');
     return null;
   } catch (error) {
     console.error('Nominatim error:', error);
@@ -333,31 +349,35 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     }
   }
 
-  // 3. Extract city from OCR text FIRST
-  const cityResult = findCityInAddress(extractedText);
-  const detectedCity = cityResult.city !== 'Unknown' ? cityResult.city : null;
-
-  // 3. Try Nominatim with CITY + "Morocco" for accurate location
+  // 3. Try Nominatim FIRST with the detected city
+  const detected = findCityInAddress(extractedText);
   let coords: { lat: number; lon: number } | null = null;
+  let geocodeSource = 'none';
 
-  if (detectedCity) {
-    try {
-      const cityQuery = `${detectedCity}, Morocco`;
-      coords = await geocodeWithNominatim(cityQuery);
-    } catch {
-      // Silent fallback to city coords on low-end devices
+  if (detected.city !== 'Unknown') {
+    // Use the city name (not the full text) for Nominatim
+    coords = await geocodeWithNominatim(`${detected.city}, Morocco`);
+    if (coords) {
+      geocodeSource = `nominatim-city-${detected.city}`;
+    } else {
+      // Fallback: use the city's hardcoded coordinates
+      coords = { lat: detected.lat, lon: detected.lon };
+      geocodeSource = `city-fallback-${detected.city}`;
+    }
+  } else {
+    // No city detected, try Nominatim with the full text
+    const fullTextClean = extractedText.replace(/\n/g, ' ').substring(0, 200);
+    coords = await geocodeWithNominatim(fullTextClean);
+    if (coords) {
+      geocodeSource = 'nominatim-full';
+    } else {
+      coords = { lat: 33.5731, lon: -7.5898 };
+      geocodeSource = 'fallback-casablanca';
     }
   }
 
-  // 4. If Nominatim fails, use city coordinates from findCityInAddress
-  if (!coords && cityResult.city !== 'Unknown') {
-    coords = { lat: cityResult.lat, lon: cityResult.lon };
-  }
-
-  // 5. Last resort: Casablanca
-  if (!coords) {
-    coords = { lat: 33.5731, lon: -7.5898 };
-  }
+  console.log('Geocode source:', geocodeSource);
+  console.log('Final coords:', coords);
 
   // Address: prefer known Moroccan city, else first meaningful line
   // (skips dates / amounts / label headers so "09/0926" never becomes address).
