@@ -139,6 +139,13 @@ export default function App() {
       setDeliveries((prev) =>
         prev.map((d) => (d.id === id ? { ...d, status } : d))
       );
+
+      // If a delivery was marked as DELIVERED or FAILED, and the user taps "فتح المسار",
+      // the route will automatically include the next pending delivery.
+      // No action needed here, but we log for debugging:
+      if (status === 'DELIVERED' || status === 'FAILED') {
+        console.log(`Delivery ${id} marked as ${status}. Next route opening will include the next pending delivery.`);
+      }
     } catch (error) {
       console.error('Failed to update status:', error);
       Alert.alert('خطأ', 'فشل في حفظ حالة التسليم.');
@@ -246,6 +253,12 @@ export default function App() {
     </TouchableOpacity>
   );
 
+  const pendingCount = deliveries.filter(
+    (d) => d.status !== 'DELIVERED' && d.status !== 'FAILED'
+  ).length;
+  const deliveredCount = deliveries.filter((d) => d.status === 'DELIVERED').length;
+  const failedCount = deliveries.filter((d) => d.status === 'FAILED').length;
+
   return (
     <View style={styles.container}>
       <StatusBar style="light" />
@@ -259,6 +272,17 @@ export default function App() {
       </View>
       <Text style={styles.subtitle}>{t('subtitle')}</Text>
       <Text style={styles.countText}>{deliveries.length} {t('deliveries')}</Text>
+      <View style={styles.statsRow}>
+        <View style={styles.statBadge}>
+          <Text style={styles.statText}>⏳ {pendingCount} قيد التسليم</Text>
+        </View>
+        <View style={[styles.statBadge, styles.statDelivered]}>
+          <Text style={styles.statText}>✓ {deliveredCount} تم</Text>
+        </View>
+        <View style={[styles.statBadge, styles.statFailed]}>
+          <Text style={styles.statText}>✗ {failedCount} فشل</Text>
+        </View>
+      </View>
       <View style={styles.buttonsContainer}>
         <TouchableOpacity style={styles.primaryButton} onPress={() => setCameraVisible(true)} disabled={processing}>
           <Text style={styles.buttonText}>{t('addDelivery')}</Text>
@@ -524,4 +548,20 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
+  statsRow: {
+    flexDirection: 'row-reverse',
+    justifyContent: 'center',
+    gap: 8,
+    marginTop: 8,
+    flexWrap: 'wrap',
+  },
+  statBadge: {
+    backgroundColor: '#E3F2FD',
+    paddingVertical: 4,
+    paddingHorizontal: 10,
+    borderRadius: 12,
+  },
+  statDelivered: { backgroundColor: '#E8F5E9' },
+  statFailed: { backgroundColor: '#FFEBEE' },
+  statText: { fontSize: 12, fontWeight: 'bold', color: '#333' },
 });
