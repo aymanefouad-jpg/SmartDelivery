@@ -59,6 +59,13 @@ const initializeDatabase = async (database: SQLite.SQLiteDatabase) => {
   } catch {
     // Column already exists — ignore.
   }
+  // Migration for existing installs: status column (present in fresh CREATE
+  // TABLE above, but older DB files predate it).
+  try {
+    await database.execAsync("ALTER TABLE deliveries ADD COLUMN status TEXT DEFAULT 'NEW';");
+  } catch {
+    // Column already exists — ignore.
+  }
 };
 
 // Delivery operations
@@ -77,7 +84,7 @@ export const saveDelivery = async (delivery: Delivery): Promise<void> => {
       delivery.latitude ?? null,
       delivery.longitude ?? null,
       delivery.order,
-      'NEW',
+      delivery.status ?? 'NEW',
       null,
       null,
       null,
@@ -103,8 +110,17 @@ export const getAllDeliveries = async (): Promise<Delivery[]> => {
     latitude: row.latitude,
     longitude: row.longitude,
     order: row.order_index,
+    status: row.status || 'NEW',
     imagePath: row.photo_uri ?? undefined,
   }));
+};
+
+export const updateDeliveryStatus = async (id: string, status: string): Promise<void> => {
+  const database = await getDB();
+  await database.runAsync(
+    'UPDATE deliveries SET status = ?, updated_at = ? WHERE id = ?',
+    [status, Date.now(), id]
+  );
 };
 
 export const updateDeliveryArabicAddress = async (

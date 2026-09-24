@@ -12,6 +12,11 @@ interface Props {
   onStatusChange?: (id: string, status: 'NEW' | 'DELIVERED' | 'FAILED') => void;
 }
 
+const numberToLetter = (n: number): string => {
+  if (n < 1 || n > 26) return '?';
+  return String.fromCharCode(64 + n); // 1=A, 2=B, ...
+};
+
 const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
@@ -68,7 +73,9 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
       activeOpacity={0.7}
     >
       <View style={styles.orderBadge}>
-        <Text style={styles.orderText}>{delivery.order}</Text>
+        <Text style={styles.orderText}>
+          {delivery.order} ({numberToLetter(delivery.order)})
+        </Text>
       </View>
       <View style={styles.info}>
         <View style={styles.headerRow}>
@@ -154,14 +161,19 @@ const styles = StyleSheet.create({
   },
   orderBadge: {
     backgroundColor: '#001F3F',
-    width: 36,
+    minWidth: 55,
     height: 36,
     borderRadius: 18,
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 8,
     marginLeft: 12,
   },
-  orderText: { color: '#fff', fontWeight: 'bold', fontSize: 16 },
+  orderText: {
+    color: '#fff',
+    fontWeight: 'bold',
+    fontSize: 12,
+  },
   info: { flex: 1, alignItems: 'flex-end' },
   headerRow: {
     flexDirection: 'row-reverse',

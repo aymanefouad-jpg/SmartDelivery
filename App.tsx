@@ -26,7 +26,7 @@ import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
-import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder, updateDeliveryArabicAddress } from './src/database/db';
+import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder, updateDeliveryArabicAddress, updateDeliveryStatus } from './src/database/db';
 
 const primaryDark = '#001F3F';
 const accentOrange = '#FF6B00';
@@ -135,11 +135,13 @@ export default function App() {
 
   const handleStatusChange = useCallback(async (id: string, status: DeliveryStatus) => {
     try {
+      await updateDeliveryStatus(id, status);
       setDeliveries((prev) =>
         prev.map((d) => (d.id === id ? { ...d, status } : d))
       );
     } catch (error) {
       console.error('Failed to update status:', error);
+      Alert.alert('خطأ', 'فشل في حفظ حالة التسليم.');
     }
   }, []);
 
