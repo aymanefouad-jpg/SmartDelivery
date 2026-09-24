@@ -282,198 +282,184 @@ export const geocodeWithNominatim = async (address: string): Promise<{ lat: numb
 };
 
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
-  // Save the image to permanent storage
+  console.log('=== processNewDeliveryFromPhoto START ===');
+
+  // 1. Save image permanently
   let savedImagePath = photoUri;
   try {
     const fileName = `delivery_${Date.now()}.jpg`;
     const permanentPath = `${FileSystem.documentDirectory}deliveries/`;
-
-    // Create directory if it doesn't exist
     const dirInfo = await FileSystem.getInfoAsync(permanentPath);
     if (!dirInfo.exists) {
       await FileSystem.makeDirectoryAsync(permanentPath, { intermediates: true });
     }
-
     const newPath = `${permanentPath}${fileName}`;
     await FileSystem.copyAsync({ from: photoUri, to: newPath });
     savedImagePath = newPath;
-  } catch {
-    // Silent fallback: keep the original cache URI (low-end perf: no logs)
+  } catch (error) {
+    console.error('Failed to save image:', error);
   }
 
-  let extractedText: string | null = null;
-  try {
-    extractedText = await mockOCR(photoUri);
+  // 2. Run OCR
+  const extractedText = await mockOCR(photoUri);
+  console.log('=== RAW OCR TEXT ===');
+  console.log(extractedText);
+  console.log('=== END OCR ===');
 
-    console.log('=== RAW OCR TEXT ===');
-    console.log(extractedText);
-    console.log('=== END RAW OCR TEXT ===');
-
-    if (!extractedText || extractedText.trim() === '') {
-      throw new Error('لم يتم التعرف على أي نص من الصورة.');
-    }
-
-  // 1. Extract phone number (Moroccan format, tolerant to spaces/dots/dashes)
-  const phoneMatch = extractedText.match(/(\+?212|0)[\s.\-]*[6-7](?:[\s.\-]*\d){8}/);
-  const phone = phoneMatch ? phoneMatch[0].replace(/[\s.\-]/g, '') : 'غير معروف';
-
-  // Extract name - STRICT: only take the line AFTER "Destinataire"
-  let name = 'غير معروف';
-  const allLines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
-
-  console.log('=== ALL LINES ===');
-  allLines.forEach((l, i) => console.log(`[${i}] ${l}`));
+  // 3. Extract lines
+  const lines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+  console.log('=== LINES ===');
+  lines.forEach((l, i) => console.log(`[${i}] ${l}`));
   console.log('=== END LINES ===');
 
-  // List of words that indicate a COMPANY name (to reject)
-  const companyKeywords = /transport|messagerie|shop|digylog|exp[eé]diteur|rizal|hub|glo|commande|order|facture|invoice|tva|ice|rc|if|patente/i;
-
-  for (let i = 0; i < allLines.length; i++) {
-    const line = allLines[i];
-
-    // Look for "Destinataire" (tolerant to OCR errors)
+  // 4. Extract NAME
+  let name = 'غير معروف';
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
     if (/dest[il1]nat[ae]ir[ea]/i.test(line)) {
-      // Case 1: name on the same line after ":"
+      // Same line
       const sameLineMatch = line.match(/:\s*(.+)/);
       if (sameLineMatch && sameLineMatch[1].trim().length > 2) {
-        const candidate = sameLineMatch[1].trim();
-        if (!companyKeywords.test(candidate)) {
-          name = candidate.substring(0, 50);
-          console.log('Name found (same line):', name);
-          break;
-        }
+        name = sameLineMatch[1].trim().substring(0, 50);
+        break;
       }
-
-      // Case 2: name on the NEXT line
-      if (i + 1 < allLines.length) {
-        const nextLine = allLines[i + 1].trim();
-        if (nextLine.length > 2 &&
-            nextLine.length < 50 &&
-            !/^\d+$/.test(nextLine) &&
-            !companyKeywords.test(nextLine)) {
+      // Next line
+      if (i + 1 < lines.length) {
+        const nextLine = lines[i + 1].trim();
+        if (nextLine.length > 2 && nextLine.length < 50) {
           name = nextLine.substring(0, 50);
-          console.log('Name found (next line):', name);
           break;
         }
       }
     }
   }
-
-  // If still not found, try Arabic label
+  // If still unknown, look for a name-like line (Capitalized words, not labels)
   if (name === 'غير معروف') {
-    for (let i = 0; i < allLines.length; i++) {
-      const line = allLines[i];
-      if (/المرسل\s*إليه|الاسم/i.test(line)) {
-        const match = line.match(/:\s*(.+)/);
-        if (match && match[1].trim().length > 2) {
-          name = match[1].trim().substring(0, 50);
-          break;
-        }
-        if (i + 1 < allLines.length) {
-          const nextLine = allLines[i + 1].trim();
-          if (nextLine.length > 2 && nextLine.length < 50) {
-            name = nextLine.substring(0, 50);
-            break;
-          }
-        }
+    for (const line of lines) {
+      if (line.length > 3 &&
+          line.length < 40 &&
+          !/^\d+$/.test(line) &&
+          !/exp[eé]diteur|dest[il1]nat|hub|digylog|commande|order|dh|mad|درهم|tanger|طنجة/i.test(line) &&
+          (/[A-Z][a-z]+\s+[A-Z][a-z]+/.test(line) || /[\u0600-\u06FF]{3,}/.test(line))) {
+        name = line.substring(0, 50);
+        break;
       }
     }
   }
+  console.log('=== NAME:', name, '===');
 
-  console.log('=== FINAL NAME:', name, '===');
+  // 5. Extract PHONE (Moroccan format: 06XXXXXXXX, 07XXXXXXXX, +2126..., +2127...)
+  let phone = 'غير معروف';
+  const phonePatterns = [
+    /(\+212|00212)\s?[67]\d{8}/,
+    /\b0[67]\d{8}\b/,
+    /(\+212|00212)\s?[67](\s?\d{2}){4}/,
+    /\b0[67](\s?\d{2}){4}\b/,
+  ];
+  for (const pattern of phonePatterns) {
+    const match = extractedText.match(pattern);
+    if (match) {
+      phone = match[0].replace(/\s/g, '');
+      break;
+    }
+  }
+  console.log('=== PHONE:', phone, '===');
 
-  // 3. Try Nominatim FIRST with the detected city
+  // 6. Extract ADDRESS (city detection)
   const detected = findCityInAddress(extractedText);
-  let coords: { lat: number; lon: number } | null = null;
-  let geocodeSource = 'none';
+  let address = 'غير معروف';
 
   if (detected.city !== 'Unknown') {
-    // Use the city name (not the full text) for Nominatim
-    coords = await geocodeWithNominatim(`${detected.city}, Morocco`);
-    if (coords) {
-      geocodeSource = `nominatim-city-${detected.city}`;
-    } else {
-      // Fallback: use the city's hardcoded coordinates
-      coords = { lat: detected.lat, lon: detected.lon };
-      geocodeSource = `city-fallback-${detected.city}`;
-    }
+    address = detected.city;
   } else {
-    // No city detected, try Nominatim with the full text
-    const fullTextClean = extractedText.replace(/\n/g, ' ').substring(0, 200);
-    coords = await geocodeWithNominatim(fullTextClean);
-    if (coords) {
-      geocodeSource = 'nominatim-full';
-    } else {
-      coords = { lat: 33.5731, lon: -7.5898 };
-      geocodeSource = 'fallback-casablanca';
+    // Look for a line that isn't a label, number, or date
+    for (const line of lines) {
+      if (line.length > 3 &&
+          line.length < 80 &&
+          !/^\d+$/.test(line) &&
+          !/\d{2}\/\d{2}\/\d{2,4}/.test(line) &&
+          !/^\d+\s*(DH|MAD|درهم)$/i.test(line) &&
+          !/digylog|exp[eé]diteur|dest[il1]nat|hub|commande|order/i.test(line)) {
+        address = line.substring(0, 80);
+        break;
+      }
     }
   }
+  console.log('=== ADDRESS:', address, '===');
+  console.log('=== CITY DETECTED:', detected.city, 'COORDS:', detected.lat, detected.lon, '===');
 
-  console.log('Geocode source:', geocodeSource);
-  console.log('Final coords:', coords);
-
-  // Address: prefer known Moroccan city, else first meaningful line
-  // (skips dates / amounts / label headers so "09/0926" never becomes address).
-  let address = 'غير معروف';
-  // First, try to find a known Moroccan city
-  const cityMatch = findCityInAddress(extractedText);
-  if (cityMatch.city !== 'Unknown') {
-    address = cityMatch.city;
-  } else {
-    // Otherwise, find lines that aren't dates/numbers/labels
-    const lines = extractedText.split('\n')
-      .map((l: string) => l.trim())
-      .filter((l: string) =>
-        l.length > 3 &&
-        l.length < 100 &&
-        !/^\d+$/.test(l) &&
-        !/\d{2}\/\d{2}\/\d{2,4}/.test(l) &&
-        !/^\d{1,2}\/\d{3,4}$/.test(l) &&
-        !/^\d+\s*(DH|MAD|درهم)$/i.test(l) &&
-        !/DIGYLOG|Expéditeur|Destinataire|Hub|Commande|Order/i.test(l)
-      );
-    if (lines.length > 0) {
-      address = lines[0].substring(0, 80);
-    }
-  }
-
-  // FIX 2: persist the captured (compressed) image to permanent app storage
-  // so the photo is saved instead of being discarded after OCR.
-  const deliveryId = `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`;
-  const delivery: Delivery = {
+  return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
-    name: name || 'غير معروف',
+    name,
     address,
     phone,
-    latitude: coords.lat,
-    longitude: coords.lon,
+    latitude: detected.lat,
+    longitude: detected.lon,
     order: 0,
+    status: 'NEW',
     imagePath: savedImagePath,
   };
-  return delivery;
-  } finally {
-    // Free OCR string immediately — don't keep image text in memory
-    extractedText = null;
-    photoUri = null as unknown as string;
-  }
+};
+
+const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
+  const R = 6371;
+  const dLat = ((lat2 - lat1) * Math.PI) / 180;
+  const dLon = ((lon2 - lon1) * Math.PI) / 180;
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos((lat1 * Math.PI) / 180) *
+      Math.cos((lat2 * Math.PI) / 180) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 };
 
 export const mockOptimizeRoute = async (deliveries: Delivery[]): Promise<Delivery[]> => {
-  if (deliveries.length < 2) return deliveries;
+  if (deliveries.length < 2) {
+    return deliveries.map((d, i) => ({ ...d, order: i + 1 }));
+  }
 
-  // Sort by city (group same-city deliveries together)
-  // If no city, keep original order
-  const sorted = [...deliveries].sort((a, b) => {
-    const aAddr = (a.arabicAddress || a.address || '').toLowerCase();
-    const bAddr = (b.arabicAddress || b.address || '').toLowerCase();
-
-    // Extract city-like words
-    const aCity = aAddr.match(/tanger|tangier|طنجة|casablanca|الدار البيضاء|rabat|الرباط|fes|فاس|marrakech|مراكش|agadir|أكادير/i)?.[0] || '';
-    const bCity = bAddr.match(/tanger|tangier|طنجة|casablanca|الدار البيضاء|rabat|الرباط|fes|فاس|marrakech|مراكش|agadir|أكادير/i)?.[0] || '';
-
-    return aCity.localeCompare(bCity);
+  // Enrich deliveries with coordinates
+  const enriched = deliveries.map((d) => {
+    if (d.latitude && d.longitude) return d;
+    const detected = findCityInAddress(d.arabicAddress || d.address || '');
+    return { ...d, latitude: detected.lat, longitude: detected.lon };
   });
 
-  // Assign order numbers
-  return sorted.map((d, index) => ({ ...d, order: index + 1 }));
+  const remaining = [...enriched];
+  const sorted: Delivery[] = [];
+
+  // Start from the first delivery
+  const start = remaining.shift()!;
+  sorted.push(start);
+
+  // Nearest-Neighbor loop
+  while (remaining.length > 0) {
+    const last = sorted[sorted.length - 1];
+    const lastLat = last.latitude || 0;
+    const lastLon = last.longitude || 0;
+
+    let closestIndex = 0;
+    let closestDistance = Infinity;
+
+    for (let i = 0; i < remaining.length; i++) {
+      const candidate = remaining[i];
+      const distance = calculateDistance(
+        lastLat,
+        lastLon,
+        candidate.latitude || 0,
+        candidate.longitude || 0
+      );
+      if (distance < closestDistance) {
+        closestDistance = distance;
+        closestIndex = i;
+      }
+    }
+
+    const closest = remaining.splice(closestIndex, 1)[0];
+    sorted.push(closest);
+  }
+
+  return sorted.map((d, i) => ({ ...d, order: i + 1 }));
 };

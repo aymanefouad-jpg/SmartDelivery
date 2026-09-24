@@ -1,4 +1,5 @@
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import * as ImagePicker from 'expo-image-picker';
 import { truncateString } from './memoryUtils';
 
 /**
@@ -52,5 +53,45 @@ export const captureAndCompress = async (
     // Free raw capture reference immediately
     raw = null;
     uri = null as unknown as string | null;
+  }
+};
+
+/**
+ * System camera with built-in crop UI (allowsEditing: true).
+ * Returns ONLY the cropped file URI (compressed for OCR).
+ */
+export const takePhotoWithSystemCamera = async (): Promise<string | null> => {
+  let result: ImagePicker.ImagePickerResult | null = null;
+  try {
+    result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.6,
+      exif: false,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return null;
+    return await compressForOCR(result.assets[0].uri);
+  } finally {
+    result = null;
+  }
+};
+
+/**
+ * Gallery picker with built-in crop UI (allowsEditing: true).
+ * Returns ONLY the cropped file URI (compressed for OCR).
+ */
+export const pickImageFromGallery = async (): Promise<string | null> => {
+  let result: ImagePicker.ImagePickerResult | null = null;
+  try {
+    result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.6,
+      exif: false,
+    });
+    if (result.canceled || !result.assets?.[0]?.uri) return null;
+    return await compressForOCR(result.assets[0].uri);
+  } finally {
+    result = null;
   }
 };
