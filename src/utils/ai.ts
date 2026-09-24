@@ -456,14 +456,17 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
   return R * c;
 };
 
-export const mockOptimizeRoute = async (deliveries: Delivery[]): Promise<Delivery[]> => {
+export const mockOptimizeRoute = async (
+  deliveries: Delivery[],
+  startLocation?: { lat: number; lon: number } | null
+): Promise<Delivery[]> => {
   if (deliveries.length < 2) {
     return deliveries.map((d, i) => ({ ...d, order: i + 1 }));
   }
 
   // Enrich deliveries with coordinates
   const enriched = deliveries.map((d) => {
-    if (d.latitude && d.longitude) return d;
+    if (d.latitude && d.longitude && d.latitude !== 0 && d.longitude !== 0) return d;
     const detected = findCityInAddress(d.arabicAddress || d.address || '');
     return { ...d, latitude: detected.lat, longitude: detected.lon };
   });
@@ -471,24 +474,33 @@ export const mockOptimizeRoute = async (deliveries: Delivery[]): Promise<Deliver
   const remaining = [...enriched];
   const sorted: Delivery[] = [];
 
-  // Start from the first delivery
-  const start = remaining.shift()!;
-  sorted.push(start);
+  // Starting point: user's location OR the first delivery
+  let currentLat: number;
+  let currentLon: number;
+
+  if (startLocation) {
+    console.log('Starting from user location:', startLocation);
+    currentLat = startLocation.lat;
+    currentLon = startLocation.lon;
+  } else {
+    // Fallback: start from the first delivery
+    const start = remaining.shift()!;
+    sorted.push(start);
+    currentLat = start.latitude || 0;
+    currentLon = start.longitude || 0;
+    console.log('Starting from first delivery (no user location available)');
+  }
 
   // Nearest-Neighbor loop
   while (remaining.length > 0) {
-    const last = sorted[sorted.length - 1];
-    const lastLat = last.latitude || 0;
-    const lastLon = last.longitude || 0;
-
     let closestIndex = 0;
     let closestDistance = Infinity;
 
     for (let i = 0; i < remaining.length; i++) {
       const candidate = remaining[i];
       const distance = calculateDistance(
-        lastLat,
-        lastLon,
+        currentLat,
+        currentLon,
         candidate.latitude || 0,
         candidate.longitude || 0
       );
@@ -500,6 +512,8 @@ export const mockOptimizeRoute = async (deliveries: Delivery[]): Promise<Deliver
 
     const closest = remaining.splice(closestIndex, 1)[0];
     sorted.push(closest);
+    currentLat = closest.latitude || 0;
+    currentLon = closest.longitude || 0;
   }
 
   return sorted.map((d, i) => ({ ...d, order: i + 1 }));

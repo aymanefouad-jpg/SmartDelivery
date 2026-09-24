@@ -22,6 +22,7 @@ import {
   findCityInAddress,
 } from './src/utils/ai';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
+import { getCurrentLocation } from './src/utils/locationHelper';
 import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
@@ -98,7 +99,18 @@ export default function App() {
     }
     setProcessing(true);
     try {
-      const optimized = await mockOptimizeRoute(deliveries);
+      // Get user's current location (GPS) to start the route from
+      const userLocation = await getCurrentLocation();
+      if (!userLocation) {
+        Alert.alert(
+          'تنبيه',
+          'لم نتمكن من قراءة موقعك. سيتم الترتيب من الكولية الأولى.',
+          [{ text: 'موافق' }]
+        );
+      }
+
+      // Optimize route starting from user location
+      const optimized = await mockOptimizeRoute(deliveries, userLocation);
       await updateDeliveryOrder(optimized);
       setDeliveries(optimized);
     } catch {
