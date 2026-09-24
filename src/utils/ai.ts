@@ -337,26 +337,28 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
 
   for (let i = 0; i < allLines.length; i++) {
     const line = allLines[i];
-    console.log(`Line [${i}]: "${line}"`);
 
-    // Look for "Destinataire" (and common OCR errors)
-    if (/dest[il1]nat[ae]ir[ea]/i.test(line)) {
-      console.log('  ✓ Found Destinataire!');
+    // VERY tolerant match for "Destinataire" (handles i→l, i→1, etc.)
+    const isDestinataireLine = /dest.{1,3}nat.{0,3}r/i.test(line);
 
-      // Case 1: name on the same line after ":"
+    if (isDestinataireLine) {
+      console.log('  ✓ Found Destinataire (tolerant match)');
+
+      // Case 1: Name on same line after ":"
       const sameLine = line.match(/:\s*(.+)/);
       if (sameLine && sameLine[1].trim().length > 2) {
-        name = sameLine[1].trim().substring(0, 50);
+        name = sameLine[1].trim().replace(/[^\p{L}\s]/gu, '').substring(0, 50);
         console.log('  ✓ Name from same line:', name);
         break;
       }
 
-      // Case 2: name on the next line
+      // Case 2: Name on next line
       if (i + 1 < allLines.length) {
         const nextLine = allLines[i + 1].trim();
-        console.log('  → Next line:', nextLine);
-        if (nextLine.length > 2 && nextLine.length < 50 && !/^\d+$/.test(nextLine)) {
-          name = nextLine.substring(0, 50);
+        // Clean the name: keep only letters and spaces
+        const cleanName = nextLine.replace(/[^\p{L}\s]/gu, '').trim();
+        if (cleanName.length > 2 && cleanName.length < 50) {
+          name = cleanName.substring(0, 50);
           console.log('  ✓ Name from next line:', name);
           break;
         }
