@@ -10,6 +10,8 @@ interface Props {
   onEdit?: (delivery: Delivery) => void;
   onEditArabicAddress?: (delivery: Delivery) => void;
   onStatusChange?: (id: string, status: 'NEW' | 'DELIVERED' | 'FAILED') => void;
+  onMoveUp?: (id: string) => void;
+  onMoveDown?: (id: string) => void;
 }
 
 const numberToLetter = (n: number): string => {
@@ -17,7 +19,7 @@ const numberToLetter = (n: number): string => {
   return String.fromCharCode(64 + n); // 1=A, 2=B, ...
 };
 
-const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange }) => {
+const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange, onMoveUp, onMoveDown }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -140,6 +142,14 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
             <Text style={styles.statusButtonText}>✗ فشل</Text>
           </TouchableOpacity>
         </View>
+        <View style={styles.actionsRow}>
+          <TouchableOpacity onPress={() => onMoveUp?.(delivery.id)} style={styles.arrowButton}>
+            <Text style={styles.arrowText}>▲</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => onMoveDown?.(delivery.id)} style={styles.arrowButton}>
+            <Text style={styles.arrowText}>▼</Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </TouchableOpacity>
   );
@@ -184,6 +194,19 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: 'bold', color: '#001F3F', marginBottom: 4 },
   deleteButton: { padding: 4 },
   deleteText: { fontSize: 18 },
+  actionsRow: {
+    flexDirection: 'column',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  arrowButton: {
+    padding: 4,
+  },
+  arrowText: {
+    fontSize: 16,
+    color: '#001F3F',
+    fontWeight: 'bold',
+  },
   editButton: { padding: 4 },
   editText: { fontSize: 18 },
   address: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'right' },

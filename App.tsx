@@ -92,33 +92,13 @@ export default function App() {
     []
   );
 
-  const handleOptimize = useCallback(async () => {
-    if (deliveries.length === 0) {
-      Alert.alert(t('optimize'), t('noDeliveries'));
-      return;
-    }
-    setProcessing(true);
-    try {
-      // Get user's current location (GPS) to start the route from
-      const userLocation = await getCurrentLocation();
-      if (!userLocation) {
-        Alert.alert(
-          'تنبيه',
-          'لم نتمكن من قراءة موقعك. سيتم الترتيب من الكولية الأولى.',
-          [{ text: 'موافق' }]
-        );
-      }
-
-      // Optimize route starting from user location
-      const optimized = await mockOptimizeRoute(deliveries, userLocation);
-      await updateDeliveryOrder(optimized);
-      setDeliveries(optimized);
-    } catch {
-      Alert.alert(t('optimize'), 'فشل في الترتيب. يرجى المحاولة مرة أخرى.');
-    } finally {
-      setProcessing(false);
-    }
-  }, [deliveries]);
+  const handleOptimize = async () => {
+    Alert.alert(
+      'معلومة',
+      'الترتيب الذكي يتم الآن بواسطة Google Maps. يمكنك ترتيب الكوليات يدوياً باستخدام الأسهم ▲▼.',
+      [{ text: 'موافق' }]
+    );
+  };
 
   const handleOpenRoute = useCallback(async () => {
     if (deliveries.length === 0) {
@@ -136,6 +116,34 @@ export default function App() {
       Alert.alert('خطأ', 'فشل في حذف الكولية.');
     }
   }, []);
+
+  const handleMoveUp = useCallback(async (id: string) => {
+    const sorted = [...deliveries].sort((a, b) => a.order - b.order);
+    const index = sorted.findIndex((d) => d.id === id);
+    if (index <= 0) return;
+
+    [sorted[index - 1], sorted[index]] = [sorted[index], sorted[index - 1]];
+
+    const reordered = sorted.map((d, i) => ({ ...d, order: i + 1 }));
+    try {
+      await updateDeliveryOrder(reordered);
+    } catch {}
+    setDeliveries(reordered);
+  }, [deliveries]);
+
+  const handleMoveDown = useCallback(async (id: string) => {
+    const sorted = [...deliveries].sort((a, b) => a.order - b.order);
+    const index = sorted.findIndex((d) => d.id === id);
+    if (index === -1 || index >= sorted.length - 1) return;
+
+    [sorted[index], sorted[index + 1]] = [sorted[index + 1], sorted[index]];
+
+    const reordered = sorted.map((d, i) => ({ ...d, order: i + 1 }));
+    try {
+      await updateDeliveryOrder(reordered);
+    } catch {}
+    setDeliveries(reordered);
+  }, [deliveries]);
 
   const handleCardPress = useCallback(async (delivery: Delivery) => {
     await openRouteInMapsApp([delivery]);
@@ -248,9 +256,11 @@ export default function App() {
         onEdit={handleEditDelivery}
         onEditArabicAddress={handleEditArabicAddress}
         onStatusChange={handleStatusChange}
+        onMoveUp={handleMoveUp}
+        onMoveDown={handleMoveDown}
       />
     ),
-    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress, handleStatusChange]
+    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress, handleStatusChange, handleMoveUp, handleMoveDown]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (

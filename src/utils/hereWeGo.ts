@@ -2,31 +2,33 @@ import { Delivery } from '../types';
 import * as Linking from 'expo-linking';
 import { Alert } from 'react-native';
 
-const ROUTE_BATCH_SIZE = 5; // Only open 5 deliveries at a time
-
+/**
+ * Opens Google Maps with ALL delivery addresses as waypoints.
+ * Google Maps will use the user's current location as origin and calculate the best route.
+ */
 export const openRouteInMapsApp = async (deliveries: Delivery[]): Promise<void> => {
   if (!deliveries || deliveries.length === 0) {
     Alert.alert('تنبيه', 'لا توجد كوليات لفتحها.');
     return;
   }
 
-  // Filter out DELIVERED and FAILED deliveries
-  const pendingDeliveries = deliveries.filter(
+  // Filter out DELIVERED and FAILED
+  const pending = deliveries.filter(
     (d) => d.status !== 'DELIVERED' && d.status !== 'FAILED'
   );
 
-  if (pendingDeliveries.length === 0) {
+  if (pending.length === 0) {
     Alert.alert('تم!', 'كل الكوليات تم تسليمها أو فشلت.');
     return;
   }
 
-  // Sort by order
-  const sorted = [...pendingDeliveries].sort((a, b) => a.order - b.order);
+  // Use the app's current order (as displayed in the list)
+  const sorted = [...pending].sort((a, b) => a.order - b.order);
 
-  // Take the first N deliveries only
-  const batch = sorted.slice(0, ROUTE_BATCH_SIZE);
+  // Take up to 10 stops (Google Maps limit)
+  const batch = sorted.slice(0, 10);
 
-  // Build addresses list
+  // Build addresses (prefer Arabic address)
   const addresses = batch
     .map((d) => (d.arabicAddress || d.address || '').trim())
     .filter((a) => a.length > 1);
@@ -36,9 +38,9 @@ export const openRouteInMapsApp = async (deliveries: Delivery[]): Promise<void> 
     return;
   }
 
-  console.log(`Opening route for ${addresses.length} deliveries (of ${pendingDeliveries.length} pending)`);
+  console.log(`Opening Google Maps with ${addresses.length} stops`);
 
-  // Single delivery
+  // Single delivery: simple search
   if (addresses.length === 1) {
     const query = encodeURIComponent(`${addresses[0]}, Morocco`);
     try {
@@ -49,7 +51,10 @@ export const openRouteInMapsApp = async (deliveries: Delivery[]): Promise<void> 
     return;
   }
 
-  // Multi-stop route (up to ROUTE_BATCH_SIZE)
+  // Multiple stops: open in Google Maps Directions
+  // ORIGIN = empty → Google Maps uses the user's current location
+  // DESTINATION = last address
+  // WAYPOINTS = all other addresses (in the order shown in the app)
   const destination = encodeURIComponent(`${addresses[addresses.length - 1]}, Morocco`);
   const waypoints = addresses
     .slice(0, -1)
@@ -66,33 +71,11 @@ export const openRouteInMapsApp = async (deliveries: Delivery[]): Promise<void> 
   try {
     await Linking.openURL(url);
   } catch (e) {
-    await Linking.openURL(url);
+    console.error('Failed to open Google Maps:', e);
+    Alert.alert('خطأ', 'فشل في فتح Google Maps.');
   }
 };
 
-const openSingleRoute = async (addresses: string[]) => {
-  if (addresses.length === 1) {
-    const query = encodeURIComponent(`${addresses[0]}, Morocco`);
-    try {
-      await Linking.openURL(`geo:0,0?q=${query}`);
-    } catch (e) {
-      await Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${query}`);
-    }
-    return;
-  }
-  const destination = encodeURIComponent(`${addresses[addresses.length - 1]}, Morocco`);
-  const waypoints = addresses
-    .slice(0, -1)
-    .map((a) => encodeURIComponent(`${a}, Morocco`))
-    .join('|');
-  let url = `https://www.google.com/maps/dir/?api=1&destination=${destination}&travelmode=driving`;
-  if (waypoints) url += `&waypoints=${waypoints}`;
-  try {
-    await Linking.openURL(url);
-  } catch (e) {
-    await Linking.openURL(url);
-  }
-};
-
+// Aliases for backward compatibility
 export const openHereWeGoRoute = openRouteInMapsApp;
 export const buildHereWeGoUrl = (_deliveries: Delivery[]): string => '';
