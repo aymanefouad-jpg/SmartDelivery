@@ -65,8 +65,8 @@ export const takePhotoWithSystemCamera = async (): Promise<string | null> => {
   try {
     result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.6,
+      allowsEditing: false,  // <-- Disable cropping
+      quality: 0.8,          // <-- Increase quality
       exif: false,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return null;
@@ -85,8 +85,8 @@ export const pickImageFromGallery = async (): Promise<string | null> => {
   try {
     result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      quality: 0.6,
+      allowsEditing: false,
+      quality: 0.8,
       exif: false,
     });
     if (result.canceled || !result.assets?.[0]?.uri) return null;

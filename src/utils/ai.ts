@@ -306,47 +306,86 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   console.log(extractedText);
   console.log('=== END OCR ===');
 
+  if (!extractedText || extractedText.trim().length < 5) {
+    console.log('OCR returned empty or too short');
+    // Still return a delivery with the image, but unknown data
+    return {
+      id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      name: 'غير معروف',
+      address: 'غير معروف',
+      phone: 'غير معروف',
+      latitude: 0,
+      longitude: 0,
+      order: 0,
+      status: 'NEW',
+      imagePath: savedImagePath,
+    };
+  }
+
   // 3. Extract lines
   const lines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
   console.log('=== LINES ===');
   lines.forEach((l, i) => console.log(`[${i}] ${l}`));
   console.log('=== END LINES ===');
 
-  // 4. Extract NAME
+  // Extract name - simple and reliable
   let name = 'غير معروف';
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
+  const allLines = extractedText.split('\n').map((l: string) => l.trim()).filter((l: string) => l.length > 0);
+
+  console.log('=== NAME EXTRACTION ===');
+  console.log('Total lines:', allLines.length);
+
+  for (let i = 0; i < allLines.length; i++) {
+    const line = allLines[i];
+    console.log(`Line [${i}]: "${line}"`);
+
+    // Look for "Destinataire" (and common OCR errors)
     if (/dest[il1]nat[ae]ir[ea]/i.test(line)) {
-      // Same line
-      const sameLineMatch = line.match(/:\s*(.+)/);
-      if (sameLineMatch && sameLineMatch[1].trim().length > 2) {
-        name = sameLineMatch[1].trim().substring(0, 50);
+      console.log('  ✓ Found Destinataire!');
+
+      // Case 1: name on the same line after ":"
+      const sameLine = line.match(/:\s*(.+)/);
+      if (sameLine && sameLine[1].trim().length > 2) {
+        name = sameLine[1].trim().substring(0, 50);
+        console.log('  ✓ Name from same line:', name);
         break;
       }
-      // Next line
-      if (i + 1 < lines.length) {
-        const nextLine = lines[i + 1].trim();
-        if (nextLine.length > 2 && nextLine.length < 50) {
+
+      // Case 2: name on the next line
+      if (i + 1 < allLines.length) {
+        const nextLine = allLines[i + 1].trim();
+        console.log('  → Next line:', nextLine);
+        if (nextLine.length > 2 && nextLine.length < 50 && !/^\d+$/.test(nextLine)) {
           name = nextLine.substring(0, 50);
+          console.log('  ✓ Name from next line:', name);
           break;
         }
       }
     }
   }
-  // If still unknown, look for a name-like line (Capitalized words, not labels)
+
+  // Fallback: any line with a capitalized name pattern (2+ words)
   if (name === 'غير معروف') {
-    for (const line of lines) {
-      if (line.length > 3 &&
+    console.log('  → Trying fallback...');
+    for (const line of allLines) {
+      // A name is typically: 2+ words with capitalized letters, and NOT a label
+      const words = line.split(/\s+/).filter(w => w.length > 1);
+      const isLabel = /exp[eé]diteur|dest[il1]nat|hub|digylog|commande|order|facture|invoice|tanger|طنجة|maroc|morocco/i.test(line);
+
+      if (words.length >= 2 &&
+          words.length <= 4 &&
+          line.length > 4 &&
           line.length < 40 &&
-          !/^\d+$/.test(line) &&
-          !/exp[eé]diteur|dest[il1]nat|hub|digylog|commande|order|dh|mad|درهم|tanger|طنجة/i.test(line) &&
-          (/[A-Z][a-z]+\s+[A-Z][a-z]+/.test(line) || /[\u0600-\u06FF]{3,}/.test(line))) {
+          !isLabel &&
+          /[A-Z]/.test(line)) {
         name = line.substring(0, 50);
+        console.log('  ✓ Name from fallback:', name);
         break;
       }
     }
   }
-  console.log('=== NAME:', name, '===');
+
+  console.log('=== FINAL NAME:', name, '===');
 
   // 5. Extract PHONE (Moroccan format: 06XXXXXXXX, 07XXXXXXXX, +2126..., +2127...)
   let phone = 'غير معروف';
