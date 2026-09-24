@@ -370,7 +370,7 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     for (const line of allLines) {
       // A name is typically: 2+ words with capitalized letters, and NOT a label
       const words = line.split(/\s+/).filter(w => w.length > 1);
-      const isLabel = /exp[eé]diteur|dest[il1]nat|hub|digylog|commande|order|facture|invoice|tanger|طنجة|maroc|morocco/i.test(line);
+      const isLabel = /exp[eé]diteur|dest[il1]nat|hub|digylog|commande|order|facture|invoice|transport|messagerie|messager|shop|rizal|dh|mad|درهم|tanger|طنجة|maroc|morocco/i.test(line);
 
       if (words.length >= 2 &&
           words.length <= 4 &&
