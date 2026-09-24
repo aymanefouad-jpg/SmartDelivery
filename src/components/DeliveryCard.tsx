@@ -82,12 +82,20 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
       <View style={styles.info}>
         <View style={styles.headerRow}>
           <Text style={styles.name}>{delivery.name}</Text>
-          <TouchableOpacity onPress={handleEditPress} style={styles.editButton}>
-            <Text style={styles.editText}>✏️</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
-            <Text style={styles.deleteText}>🗑️</Text>
-          </TouchableOpacity>
+          <View style={styles.actionsRow}>
+            <TouchableOpacity onPress={() => onMoveUp?.(delivery.id)} style={styles.arrowButton}>
+              <Text style={styles.arrowText}>▲</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => onMoveDown?.(delivery.id)} style={styles.arrowButton}>
+              <Text style={styles.arrowText}>▼</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleEditPress} style={styles.editButton}>
+              <Text style={styles.editText}>✏️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
+              <Text style={styles.deleteText}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
         </View>
         <Text style={styles.address}>{delivery.address}</Text>
         {delivery.imagePath && (
@@ -142,14 +150,6 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
             <Text style={styles.statusButtonText}>✗ فشل</Text>
           </TouchableOpacity>
         </View>
-        <View style={styles.actionsRow}>
-          <TouchableOpacity onPress={() => onMoveUp?.(delivery.id)} style={styles.arrowButton}>
-            <Text style={styles.arrowText}>▲</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => onMoveDown?.(delivery.id)} style={styles.arrowButton}>
-            <Text style={styles.arrowText}>▼</Text>
-          </TouchableOpacity>
-        </View>
       </View>
     </TouchableOpacity>
   );
@@ -195,15 +195,20 @@ const styles = StyleSheet.create({
   deleteButton: { padding: 4 },
   deleteText: { fontSize: 18 },
   actionsRow: {
-    flexDirection: 'column',
+    flexDirection: 'row',
     alignItems: 'center',
-    marginHorizontal: 8,
+    gap: 8,
   },
   arrowButton: {
-    padding: 4,
+    backgroundColor: '#E3F2FD',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   arrowText: {
-    fontSize: 16,
+    fontSize: 14,
     color: '#001F3F',
     fontWeight: 'bold',
   },
