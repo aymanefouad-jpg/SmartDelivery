@@ -10,8 +10,7 @@ interface Props {
   onEdit?: (delivery: Delivery) => void;
   onEditArabicAddress?: (delivery: Delivery) => void;
   onStatusChange?: (id: string, status: 'NEW' | 'DELIVERED' | 'FAILED') => void;
-  onMoveUp?: (id: string) => void;
-  onMoveDown?: (id: string) => void;
+  onOrderPress?: (delivery: Delivery) => void; // NEW
 }
 
 const numberToLetter = (n: number): string => {
@@ -19,7 +18,7 @@ const numberToLetter = (n: number): string => {
   return String.fromCharCode(64 + n); // 1=A, 2=B, ...
 };
 
-const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange, onMoveUp, onMoveDown }) => {
+const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange, onOrderPress }) => {
   const handleCall = () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
@@ -74,28 +73,26 @@ const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, on
       onPress={() => onPress?.(delivery)}
       activeOpacity={0.7}
     >
-      <View style={styles.orderBadge}>
-        <Text style={styles.orderText}>
-          {delivery.order} ({numberToLetter(delivery.order)})
-        </Text>
+      <View style={styles.orderBadgeWrap}>
+        <TouchableOpacity
+          style={styles.orderBadge}
+          onPress={() => onOrderPress?.(delivery)}
+        >
+          <Text style={styles.orderText}>
+            {delivery.order} ({numberToLetter(delivery.order)})
+          </Text>
+        </TouchableOpacity>
+        <Text style={styles.orderHint}>اضغط للتغيير</Text>
       </View>
       <View style={styles.info}>
         <View style={styles.headerRow}>
           <Text style={styles.name}>{delivery.name}</Text>
-          <View style={styles.actionsRow}>
-            <TouchableOpacity onPress={() => onMoveUp?.(delivery.id)} style={styles.arrowButton}>
-              <Text style={styles.arrowText}>▲</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => onMoveDown?.(delivery.id)} style={styles.arrowButton}>
-              <Text style={styles.arrowText}>▼</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleEditPress} style={styles.editButton}>
-              <Text style={styles.editText}>✏️</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
-              <Text style={styles.deleteText}>🗑️</Text>
-            </TouchableOpacity>
-          </View>
+          <TouchableOpacity onPress={handleEditPress} style={styles.editButton}>
+            <Text style={styles.editText}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleDeletePress} style={styles.deleteButton}>
+            <Text style={styles.deleteText}>🗑️</Text>
+          </TouchableOpacity>
         </View>
         <Text style={styles.address}>{delivery.address}</Text>
         {delivery.imagePath && (
@@ -179,6 +176,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     marginLeft: 12,
   },
+  orderBadgeWrap: {
+    alignItems: 'center',
+  },
+  orderHint: {
+    fontSize: 9,
+    color: '#999',
+    textAlign: 'center',
+    marginTop: 2,
+  },
   orderText: {
     color: '#fff',
     fontWeight: 'bold',
@@ -194,24 +200,6 @@ const styles = StyleSheet.create({
   name: { fontSize: 16, fontWeight: 'bold', color: '#001F3F', marginBottom: 4 },
   deleteButton: { padding: 4 },
   deleteText: { fontSize: 18 },
-  actionsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  arrowButton: {
-    backgroundColor: '#E3F2FD',
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  arrowText: {
-    fontSize: 14,
-    color: '#001F3F',
-    fontWeight: 'bold',
-  },
   editButton: { padding: 4 },
   editText: { fontSize: 18 },
   address: { fontSize: 14, color: '#666', marginBottom: 6, textAlign: 'right' },

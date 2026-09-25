@@ -44,6 +44,8 @@ export default function App() {
   const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
   const [editingArabicAddress, setEditingArabicAddress] = useState<Delivery | null>(null);
   const [arabicAddressInput, setArabicAddressInput] = useState('');
+  const [editingOrder, setEditingOrder] = useState<Delivery | null>(null);
+  const [orderInput, setOrderInput] = useState('');
   const [justReturnedFromMaps, setJustReturnedFromMaps] = useState(false);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
@@ -139,33 +141,47 @@ export default function App() {
     }
   }, []);
 
-  const handleMoveUp = useCallback(async (id: string) => {
-    const sorted = [...deliveries].sort((a, b) => a.order - b.order);
-    const index = sorted.findIndex((d) => d.id === id);
-    if (index <= 0) return;
+  const handleOrderPress = useCallback((delivery: Delivery) => {
+    setEditingOrder(delivery);
+    setOrderInput(String(delivery.order));
+  }, []);
 
-    [sorted[index - 1], sorted[index]] = [sorted[index], sorted[index - 1]];
+  const handleSaveOrder = useCallback(async () => {
+    if (!editingOrder) return;
 
-    const reordered = sorted.map((d, i) => ({ ...d, order: i + 1 }));
+    const newOrder = parseInt(orderInput, 10);
+    const maxOrder = deliveries.length;
+
+    if (isNaN(newOrder) || newOrder < 1 || newOrder > maxOrder) {
+      Alert.alert('خطأ', `الرقم يجب أن يكون بين 1 و ${maxOrder}`);
+      return;
+    }
+
     try {
+      // Sort current deliveries
+      const sorted = [...deliveries].sort((a, b) => a.order - b.order);
+
+      // Remove the editing delivery
+      const withoutCurrent = sorted.filter((d) => d.id !== editingOrder.id);
+
+      // Insert at new position (index = newOrder - 1)
+      withoutCurrent.splice(newOrder - 1, 0, editingOrder);
+
+      // Reassign order numbers
+      const reordered = withoutCurrent.map((d, i) => ({ ...d, order: i + 1 }));
+
+      // Save to SQLite
       await updateDeliveryOrder(reordered);
-    } catch {}
-    setDeliveries(reordered);
-  }, [deliveries]);
+      setDeliveries(reordered);
 
-  const handleMoveDown = useCallback(async (id: string) => {
-    const sorted = [...deliveries].sort((a, b) => a.order - b.order);
-    const index = sorted.findIndex((d) => d.id === id);
-    if (index === -1 || index >= sorted.length - 1) return;
-
-    [sorted[index], sorted[index + 1]] = [sorted[index + 1], sorted[index]];
-
-    const reordered = sorted.map((d, i) => ({ ...d, order: i + 1 }));
-    try {
-      await updateDeliveryOrder(reordered);
-    } catch {}
-    setDeliveries(reordered);
-  }, [deliveries]);
+      // Close modal
+      setEditingOrder(null);
+      setOrderInput('');
+    } catch (error) {
+      console.error('Failed to reorder:', error);
+      Alert.alert('خطأ', 'فشل في تغيير الترتيب.');
+    }
+  }, [editingOrder, orderInput, deliveries]);
 
   const handleCardPress = useCallback(async (delivery: Delivery) => {
     setJustReturnedFromMaps(true);
@@ -279,11 +295,10 @@ export default function App() {
         onEdit={handleEditDelivery}
         onEditArabicAddress={handleEditArabicAddress}
         onStatusChange={handleStatusChange}
-        onMoveUp={handleMoveUp}
-        onMoveDown={handleMoveDown}
+        onOrderPress={handleOrderPress}
       />
     ),
-    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress, handleStatusChange, handleMoveUp, handleMoveDown]
+    [handleDeleteDelivery, handleCardPress, handleEditDelivery, handleEditArabicAddress, handleStatusChange, handleOrderPress]
   );
 
   const langButton = (lang: 'ar' | 'en' | 'fr', label: string) => (
@@ -405,6 +420,46 @@ export default function App() {
                 <TouchableOpacity
                   style={[styles.modalButton, styles.saveButton]}
                   onPress={handleSaveArabicAddress}
+                >
+                  <Text style={styles.modalButtonText}>حفظ</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+      {/* Order change modal — conditionally mounted like the other modals (OPT3) */}
+      {editingOrder !== null && (
+        <Modal
+          visible={true}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setEditingOrder(null)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <Text style={styles.modalTitle}>تغيير ترتيب الكولية</Text>
+              <Text style={styles.modalSubtitle}>
+                {editingOrder?.name} - {editingOrder?.address}
+              </Text>
+              <TextInput
+                style={styles.modalInput}
+                value={orderInput}
+                onChangeText={setOrderInput}
+                keyboardType="number-pad"
+                placeholder="أدخل الرقم الجديد (1، 2، 3...)"
+                placeholderTextColor="#999"
+              />
+              <View style={styles.modalButtons}>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.cancelButton]}
+                  onPress={() => setEditingOrder(null)}
+                >
+                  <Text style={styles.modalButtonText}>إلغاء</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.modalButton, styles.saveButton]}
+                  onPress={handleSaveOrder}
                 >
                   <Text style={styles.modalButtonText}>حفظ</Text>
                 </TouchableOpacity>
@@ -556,6 +611,12 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: 'bold',
     color: '#001F3F',
+    marginBottom: 15,
+    textAlign: 'right',
+  },
+  modalSubtitle: {
+    fontSize: 13,
+    color: '#666',
     marginBottom: 15,
     textAlign: 'right',
   },
