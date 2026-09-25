@@ -17,12 +17,10 @@ import { Delivery } from './src/types';
 import type { DeliveryStatus } from './src/types';
 import {
   processNewDeliveryFromPhoto,
-  mockOptimizeRoute,
   mockGeocode,
   findCityInAddress,
 } from './src/utils/ai';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
-import { getCurrentLocation } from './src/utils/locationHelper';
 import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
@@ -91,14 +89,6 @@ export default function App() {
     },
     []
   );
-
-  const handleOptimize = async () => {
-    Alert.alert(
-      'معلومة',
-      'الترتيب الآن يدوي. استخدم الأسهم ▲▼ لترتيب الكوليات. Google Maps سيتولى ترتيب المسار بناءً على العناوين.',
-      [{ text: 'موافق' }]
-    );
-  };
 
   const handleOpenRoute = useCallback(async () => {
     if (deliveries.length === 0) {
@@ -312,16 +302,13 @@ export default function App() {
         <TouchableOpacity style={styles.secondaryButton} onPress={() => setManualInputVisible(true)} disabled={processing}>
           <Text style={styles.buttonText}>إدخال يدوي</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.secondaryButton} onPress={handleOptimize} disabled={processing || deliveries.length === 0}>
-          <Text style={styles.buttonText}>{t('optimize')}</Text>
-        </TouchableOpacity>
         <TouchableOpacity style={styles.secondaryButton} onPress={handleOpenRoute} disabled={deliveries.length === 0}>
           <Text style={styles.buttonText}>{t('openRoute')}</Text>
         </TouchableOpacity>
       </View>
       {processing && <View style={styles.loadingOverlay}><ActivityIndicator size="large" color={accentOrange} /></View>}
       <FlatList
-        data={deliveries}
+        data={[...deliveries].sort((a, b) => a.order - b.order)}
         renderItem={renderDelivery}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.listContent}
