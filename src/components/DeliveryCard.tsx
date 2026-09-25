@@ -19,22 +19,40 @@ const numberToLetter = (n: number): string => {
 };
 
 const DeliveryCard: React.FC<Props> = ({ delivery, onDelete, onPress, onEdit, onEditArabicAddress, onStatusChange, onOrderPress }) => {
-  const handleCall = () => {
+  const handleCall = async () => {
     if (!delivery.phone || delivery.phone === 'غير معروف') {
       Alert.alert('تنبيه', 'لا يوجد رقم هاتف لهذه الكولية.');
       return;
     }
-    const cleanPhone = delivery.phone.replace(/\s/g, '');
+
+    // Clean the phone number (remove spaces, dashes, etc.)
+    const cleanPhone = delivery.phone.replace(/[^0-9+]/g, '');
     const phoneUrl = `tel:${cleanPhone}`;
-    Linking.canOpenURL(phoneUrl)
-      .then((supported) => {
-        if (supported) {
-          return Linking.openURL(phoneUrl);
-        } else {
-          handleCopyPhone();
-        }
-      })
-      .catch(() => handleCopyPhone());
+
+    console.log('Attempting to open:', phoneUrl);
+
+    try {
+      // Try to open the dialer DIRECTLY (without canOpenURL check)
+      await Linking.openURL(phoneUrl);
+    } catch (error) {
+      console.error('Failed to open dialer:', error);
+
+      // Fallback: show options
+      Alert.alert(
+        'تعذر فتح الاتصال',
+        `الرقم: ${delivery.phone}`,
+        [
+          {
+            text: 'نسخ الرقم',
+            onPress: async () => {
+              await Clipboard.setStringAsync(delivery.phone);
+              Alert.alert('تم النسخ', `تم نسخ الرقم: ${delivery.phone}`);
+            },
+          },
+          { text: 'إلغاء', style: 'cancel' },
+        ]
+      );
+    }
   };
 
   const handleCopyPhone = async () => {
