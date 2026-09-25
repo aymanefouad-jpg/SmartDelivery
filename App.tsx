@@ -10,6 +10,7 @@ import {
   Modal,
   Linking,
   TextInput,
+  AppState,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 
@@ -43,6 +44,7 @@ export default function App() {
   const [editingDelivery, setEditingDelivery] = useState<Delivery | null>(null);
   const [editingArabicAddress, setEditingArabicAddress] = useState<Delivery | null>(null);
   const [arabicAddressInput, setArabicAddressInput] = useState('');
+  const [justReturnedFromMaps, setJustReturnedFromMaps] = useState(false);
   const [language, setLanguageState] = useState<'ar' | 'en' | 'fr'>('ar');
 
   // OPT5: Every useEffect has a cleanup function (isMounted guard)
@@ -63,6 +65,35 @@ export default function App() {
       mounted = false;
     };
   }, []);
+
+  // Detect return from Google Maps: remind the user to mirror any
+  // in-Maps reorder with the ▲▼ arrows (Maps can't push order back).
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState === 'active' && justReturnedFromMaps) {
+        // The user returned to the app
+        Alert.alert(
+          'هل غيّرت ترتيب المحطات في Google Maps؟',
+          'إذا نعم، يمكنك تعديل الترتيب يدوياً في التطبيق باستخدام الأسهم ▲▼',
+          [
+            { text: 'لا', style: 'cancel', onPress: () => setJustReturnedFromMaps(false) },
+            {
+              text: 'نعم، سأعدل يدوياً',
+              onPress: () => {
+                setJustReturnedFromMaps(false);
+                Alert.alert(
+                  'ترتيب يدوي',
+                  'استخدم الأسهم ▲▼ على كل كولية لترتيبها كما في Google Maps.'
+                );
+              }
+            },
+          ]
+        );
+      }
+    });
+
+    return () => subscription.remove();
+  }, [justReturnedFromMaps]);
 
   const handleLanguageChange = useCallback((lang: 'ar' | 'en' | 'fr') => {
     setLanguageState(lang);
@@ -95,6 +126,7 @@ export default function App() {
       Alert.alert(t('openRoute'), t('noDeliveries'));
       return;
     }
+    setJustReturnedFromMaps(true);
     await openRouteInMapsApp(deliveries);
   }, [deliveries]);
 
@@ -136,6 +168,7 @@ export default function App() {
   }, [deliveries]);
 
   const handleCardPress = useCallback(async (delivery: Delivery) => {
+    setJustReturnedFromMaps(true);
     await openRouteInMapsApp([delivery]);
   }, []);
 
