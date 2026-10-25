@@ -3,6 +3,7 @@ import TextRecognition from '@react-native-ml-kit/text-recognition';
 // NOTE: expo-file-system v57 moved copyAsync/documentDirectory to /legacy —
 // the package root only exports the new File/Directory API (no copy).
 import * as FileSystem from 'expo-file-system/legacy';
+import { analyzeImageWithGemini } from './geminiAI';
 
 const MOCK_ADDRESSES = [
   'الدار البيضاء، شارع محمد الخامس، رقم 123',
@@ -300,7 +301,31 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
     console.error('Failed to save image:', error);
   }
 
-  // 2. Run OCR
+  // 2. Try cloud extraction first (Gemini reads Arabic + French labels far
+  //    better than on-device ML Kit).
+  const geminiData = await analyzeImageWithGemini(photoUri);
+
+  if (geminiData) {
+    const detected = findCityInAddress(`${geminiData.city} ${geminiData.address}`.trim());
+    const address =
+      geminiData.address ||
+      geminiData.city ||
+      (detected.city !== 'Unknown' ? detected.city : 'غير معروف');
+
+    return {
+      id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
+      name: geminiData.name || 'غير معروف',
+      address,
+      phone: geminiData.phone || 'غير معروف',
+      latitude: detected.lat,
+      longitude: detected.lon,
+      order: 0,
+      status: 'NEW',
+      imagePath: savedImagePath,
+    };
+  }
+
+  // 3. Fallback: on-device ML Kit OCR (also works offline / without a key).
   const extractedText = await mockOCR(photoUri);
   console.log('=== RAW OCR TEXT ===');
   console.log(extractedText);
