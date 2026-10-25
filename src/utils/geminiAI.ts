@@ -199,3 +199,137 @@ export const analyzeImageWithGemini = async (
   console.warn('Gemini: no available model answered — using ML Kit.');
   return null;
 };
+
+// ---------------------------------------------------------------------------
+// Route optimization
+// ---------------------------------------------------------------------------
+
+export interface DeliveryForRoute {
+  id: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+// Sorting is a small text task, but give slow networks a little more room
+// than OCR: a wrong/partial answer is rejected anyway.
+const ROUTE_TIMEOUT_MS = 8000;
+
+const parseJsonArray = (text: string): unknown => {
+  if (!text) return null;
+
+  const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i);
+  const candidate = fenced ? fenced[1] : text;
+
+  const start = candidate.indexOf('[');
+  const end = candidate.lastIndexOf(']');
+  if (start === -1 || end === -1 || end <= start) return null;
+
+  try {
+    return JSON.parse(candidate.substring(start, end + 1));
+  } catch {
+    return null;
+  }
+};
+
+/**
+ * Ask Gemini to order pending deliveries nearest-first from the driver's
+ * position. Returns delivery IDs only when the answer is a permutation of the
+ * input — never a partial list — so the caller can safely fall back.
+ */
+export const optimizeRouteWithGemini = async (
+  deliveries: DeliveryForRoute[],
+  userLat: number,
+  userLon: number
+): Promise<string[] | null> => {
+  if (isKeyMissing() || deliveries.length < 2) return null;
+
+  const compact = deliveries.map((d) => ({
+    id: d.id,
+    name: d.name.slice(0, 60),
+    address: d.address.slice(0, 100),
+    lat: d.latitude,
+    lon: d.longitude,
+  }));
+
+  const prompt = `You are a route optimization assistant for a delivery driver.
+Driver's current position: {"lat": ${userLat}, "lon": ${userLon}}
+
+Deliveries (JSON):
+${JSON.stringify(compact)}
+
+Task: order ALL deliveries with a nearest-neighbor route starting from the
+driver's position (closest first, then continue from the last stop).
+
+Rules:
+- Return ONLY a JSON array containing every "id" exactly once.
+- Do not invent IDs, do not omit IDs, do not add any text or explanation.
+- Example: ["id1","id2","id3"]`;
+
+  const body = JSON.stringify({
+    contents: [{ parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: 0,
+      maxOutputTokens: 1024,
+      responseMimeType: 'application/json',
+    },
+  });
+
+  const models = MODEL_FALLBACKS.filter((m, i) => m && MODEL_FALLBACKS.indexOf(m) === i);
+  const expectedIds = new Set(deliveries.map((d) => d.id));
+
+  for (const model of models) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ROUTE_TIMEOUT_MS);
+
+    try {
+      const response = await fetch(buildUrl(model), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+        signal: controller.signal,
+      });
+
+      if (response.status === 404) continue;
+
+      if (!response.ok) {
+        console.warn('Gemini routing failed with status', response.status);
+        return null;
+      }
+
+      const data = (await response.json()) as GeminiResponse;
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+      const parsed = parseJsonArray(text);
+
+      if (!Array.isArray(parsed) || parsed.length !== deliveries.length) {
+        console.warn('Gemini routing returned an invalid array');
+        return null;
+      }
+
+      const ids = parsed.filter((value): value is string => typeof value === 'string');
+      const unique = new Set(ids);
+
+      // Must be a full permutation of the pending deliveries.
+      if (ids.length !== deliveries.length || unique.size !== expectedIds.size) {
+        console.warn('Gemini routing returned duplicate or missing IDs');
+        return null;
+      }
+      for (const id of ids) {
+        if (!expectedIds.has(id)) {
+          console.warn('Gemini routing returned an unknown ID');
+          return null;
+        }
+      }
+
+      return ids;
+    } catch (error) {
+      console.warn('Gemini routing request failed', error);
+      return null;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  return null;
+};

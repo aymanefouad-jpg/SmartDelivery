@@ -20,8 +20,10 @@ import {
   processNewDeliveryFromPhoto,
   geocodeWithNominatim,
   mockOptimizeRoute,
+  calculateRouteDistance,
   findCityInAddress,
 } from './src/utils/ai';
+import { optimizeRouteWithGemini } from './src/utils/geminiAI';
 import { getCurrentLocation } from './src/utils/locationHelper';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
 import { DeliveryCardMemo } from './src/components/DeliveryCard';
@@ -153,7 +155,48 @@ export default function App() {
       // Real GPS start point. Null when permission is denied or GPS is off —
       // sorting then starts from the first delivery instead of blocking.
       const userLocation = await getCurrentLocation();
-      const sortedPending = await mockOptimizeRoute(pending, userLocation);
+
+      // Gemini orders the stops nearest-first. The answer is only accepted if
+      // it is a full permutation of the pending IDs (checked in geminiAI.ts).
+      let sortedPending: Delivery[] | null = null;
+      if (userLocation) {
+        const sortedIds = await optimizeRouteWithGemini(
+          pending.map((d) => ({
+            id: d.id,
+            name: d.name,
+            address: d.arabicAddress || d.address,
+            latitude: d.latitude,
+            longitude: d.longitude,
+          })),
+          userLocation.lat,
+          userLocation.lon
+        );
+
+        if (sortedIds) {
+          const byId = new Map(pending.map((d) => [d.id, d]));
+          const fromGemini = sortedIds
+            .map((id) => byId.get(id))
+            .filter((d): d is Delivery => !!d);
+          if (fromGemini.length === pending.length) {
+            sortedPending = fromGemini;
+          }
+        }
+      }
+
+      // Local nearest-neighbor is free (no network) and always available.
+      const localSorted = await mockOptimizeRoute(pending, userLocation);
+
+      // Prefer Gemini's order only when it is valid AND not longer than the
+      // local route: an LLM can return a syntactically perfect but slower
+      // order, and this comparison costs nothing.
+      let finalPending = sortedPending ?? localSorted;
+      if (
+        sortedPending &&
+        calculateRouteDistance(localSorted, userLocation) <
+          calculateRouteDistance(sortedPending, userLocation)
+      ) {
+        finalPending = localSorted;
+      }
 
       // Keep DELIVERED/FAILED deliveries in state (after the active route) so
       // the cards and the stats row never lose data.
@@ -161,7 +204,7 @@ export default function App() {
         (d) => d.status === 'DELIVERED' || d.status === 'FAILED'
       );
       let nextOrder = 0;
-      const merged = [...sortedPending, ...parked].map((d) => ({
+      const merged = [...finalPending, ...parked].map((d) => ({
         ...d,
         order: ++nextOrder,
       }));

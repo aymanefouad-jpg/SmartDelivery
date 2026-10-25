@@ -532,8 +532,7 @@ const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: numbe
 export const mockOptimizeRoute = async (
   deliveries: Delivery[],
   startLocation?: { lat: number; lon: number } | null
-): Promise<Delivery[]> => {
-  if (deliveries.length < 2) {
+): Promise<Delivery[]> => {  if (deliveries.length < 2) {
     return deliveries.map((d, i) => ({ ...d, order: i + 1 }));
   }
 
@@ -590,4 +589,29 @@ export const mockOptimizeRoute = async (
   }
 
   return sorted.map((d, i) => ({ ...d, order: i + 1 }));
+};
+
+/**
+ * Total driven distance (km) for an already ordered list of deliveries.
+ * Used to compare Gemini's order with the local nearest-neighbor order and
+ * keep the shorter one — Gemini output is syntactically valid but not always
+ * a shorter route.
+ */
+export const calculateRouteDistance = (
+  deliveries: Delivery[],
+  startLocation?: { lat: number; lon: number } | null
+): number => {
+  if (deliveries.length === 0) return 0;
+
+  let currentLat = startLocation ? startLocation.lat : deliveries[0].latitude;
+  let currentLon = startLocation ? startLocation.lon : deliveries[0].longitude;
+  let total = 0;
+
+  for (const d of deliveries) {
+    total += calculateDistance(currentLat, currentLon, d.latitude, d.longitude);
+    currentLat = d.latitude;
+    currentLon = d.longitude;
+  }
+
+  return total;
 };
