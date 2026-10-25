@@ -16,16 +16,16 @@ declare const process: {
 
 const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY || '';
 
-// gemini-1.5-flash is retired by Google. 2.5 Flash is the current stable
-// vision model; EXPO_PUBLIC_GEMINI_MODEL lets you override without code changes.
-const DEFAULT_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-2.5-flash';
+// gemini-1.5/2.0/2.5 Flash are retired for new keys. As of Oct 2026 the
+// stable vision model with free capacity is 3.5 Flash Lite; override with
+// EXPO_PUBLIC_GEMINI_MODEL if you want a newer Flash model.
+const DEFAULT_MODEL = process.env.EXPO_PUBLIC_GEMINI_MODEL || 'gemini-3.5-flash-lite';
 const MODEL_FALLBACKS = [
   DEFAULT_MODEL,
+  'gemini-3.8-flash',
   'gemini-flash-latest',
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
 ];
-const REQUEST_TIMEOUT_MS = 20000;
+const REQUEST_TIMEOUT_MS = 25000;
 
 export interface ExtractedData {
   name: string;
