@@ -18,15 +18,25 @@ import { Delivery } from './src/types';
 import type { DeliveryStatus } from './src/types';
 import {
   processNewDeliveryFromPhoto,
-  mockGeocode,
+  geocodeWithNominatim,
+  mockOptimizeRoute,
   findCityInAddress,
 } from './src/utils/ai';
+import { getCurrentLocation } from './src/utils/locationHelper';
 import { openRouteInMapsApp } from './src/utils/hereWeGo';
 import { DeliveryCardMemo } from './src/components/DeliveryCard';
 import { CameraScreen } from './src/screens/CameraScreen';
 import { ManualInputScreen } from './src/screens/ManualInputScreen';
 import { t, setLanguage } from './src/i18n';
-import { saveDelivery, getAllDeliveries, deleteDelivery, updateDeliveryOrder, updateDeliveryArabicAddress, updateDeliveryStatus } from './src/database/db';
+import {
+  saveDelivery,
+  getAllDeliveries,
+  deleteDelivery,
+  updateDeliveryOrder,
+  updateDeliveryArabicAddress,
+  updateDeliveryStatus,
+  updateDeliveryDetails,
+} from './src/database/db';
 
 const primaryDark = '#001F3F';
 const accentOrange = '#FF6B00';
@@ -69,14 +79,14 @@ export default function App() {
   }, []);
 
   // Detect return from Google Maps: remind the user to mirror any
-  // in-Maps reorder with the ▲▼ arrows (Maps can't push order back).
+  // in-Maps reorder with the order badge (Maps can't push order back).
   useEffect(() => {
     const subscription = AppState.addEventListener('change', (nextState) => {
       if (nextState === 'active' && justReturnedFromMaps) {
         // The user returned to the app
         Alert.alert(
           'هل غيّرت ترتيب المحطات في Google Maps؟',
-          'إذا نعم، يمكنك تعديل الترتيب يدوياً في التطبيق باستخدام الأسهم ▲▼',
+          'إذا نعم، اضغط على رقم الترتيب في بطاقة الكولية لتعديله يدوياً.',
           [
             { text: 'لا', style: 'cancel', onPress: () => setJustReturnedFromMaps(false) },
             {
@@ -85,7 +95,7 @@ export default function App() {
                 setJustReturnedFromMaps(false);
                 Alert.alert(
                   'ترتيب يدوي',
-                  'استخدم الأسهم ▲▼ على كل كولية لترتيبها كما في Google Maps.'
+                  'اضغط على رقم الترتيب داخل البطاقة لإدخال رقم الموضع الجديد.'
                 );
               }
             },
@@ -128,8 +138,47 @@ export default function App() {
       Alert.alert(t('openRoute'), t('noDeliveries'));
       return;
     }
-    setJustReturnedFromMaps(true);
-    await openRouteInMapsApp(deliveries);
+
+    const pending = deliveries.filter(
+      (d) => d.status !== 'DELIVERED' && d.status !== 'FAILED'
+    );
+
+    if (pending.length === 0) {
+      Alert.alert('تم!', 'كل الكوليات تم تسليمها أو فشلت.');
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      // Real GPS start point. Null when permission is denied or GPS is off —
+      // sorting then starts from the first delivery instead of blocking.
+      const userLocation = await getCurrentLocation();
+      const sortedPending = await mockOptimizeRoute(pending, userLocation);
+
+      // Keep DELIVERED/FAILED deliveries in state (after the active route) so
+      // the cards and the stats row never lose data.
+      const parked = deliveries.filter(
+        (d) => d.status === 'DELIVERED' || d.status === 'FAILED'
+      );
+      let nextOrder = 0;
+      const merged = [...sortedPending, ...parked].map((d) => ({
+        ...d,
+        order: ++nextOrder,
+      }));
+
+      // Persist the new order so it survives an app reload.
+      await updateDeliveryOrder(merged);
+      setDeliveries(merged);
+
+      setJustReturnedFromMaps(true);
+      await openRouteInMapsApp(merged);
+    } catch {
+      // Sorting/persistence is best-effort: never block opening the route.
+      setJustReturnedFromMaps(true);
+      await openRouteInMapsApp(deliveries);
+    } finally {
+      setProcessing(false);
+    }
   }, [deliveries]);
 
   const handleDeleteDelivery = useCallback(async (id: string) => {
@@ -216,9 +265,10 @@ export default function App() {
     setArabicAddressInput(delivery.arabicAddress || '');
   }, []);
 
-  const handleSaveArabicAddress = useCallback(() => {
+  const handleSaveArabicAddress = useCallback(async () => {
     if (editingArabicAddress) {
-      const id = editingArabicAddress.id;
+      const current = editingArabicAddress;
+      const id = current.id;
       const value = arabicAddressInput;
       setDeliveries((prev) =>
         prev.map((d) =>
@@ -231,6 +281,26 @@ export default function App() {
       updateDeliveryArabicAddress(id, value).catch(() => {});
       setEditingArabicAddress(null);
       setArabicAddressInput('');
+
+      // The Arabic address is often more precise than the OCR text, so use it
+      // to refresh the coordinates used for route sorting (best-effort).
+      if (!value.trim()) return;
+      const geocoded = await geocodeWithNominatim(value);
+      if (!geocoded) return;
+
+      setDeliveries((prev) =>
+        prev.map((d) =>
+          d.id === id
+            ? { ...d, latitude: geocoded.lat, longitude: geocoded.lon }
+            : d
+        )
+      );
+      updateDeliveryDetails({
+        ...current,
+        arabicAddress: value,
+        latitude: geocoded.lat,
+        longitude: geocoded.lon,
+      }).catch(() => {});
     }
   }, [editingArabicAddress, arabicAddressInput]);
 
@@ -241,18 +311,22 @@ export default function App() {
       setProcessing(true);
       try {
         const cityResult = findCityInAddress(data.address);
-        let coords: { lat: number; lon: number };
-        if (cityResult.city !== 'Unknown') {
-          coords = { lat: cityResult.lat, lon: cityResult.lon };
-        } else {
-          coords = await mockGeocode(data.address);
-        }
+        // Geocode the edited address so route sorting uses real positions.
+        const geocoded = await geocodeWithNominatim(data.address);
+
+        const updated: Delivery = {
+          ...editingDelivery,
+          name: data.name,
+          address: data.address,
+          phone: data.phone,
+          latitude: geocoded?.lat ?? cityResult.lat,
+          longitude: geocoded?.lon ?? cityResult.lon,
+        };
+
+        // Persist the edit (coordinates included) so it survives a reload.
+        await updateDeliveryDetails(updated);
         setDeliveries((prev) =>
-          prev.map((d) =>
-            d.id === editingDelivery.id
-              ? { ...d, name: data.name, address: data.address, phone: data.phone, latitude: coords.lat, longitude: coords.lon }
-              : d
-          )
+          prev.map((d) => (d.id === updated.id ? updated : d))
         );
       } catch {
         Alert.alert('خطأ', 'فشل في تعديل الكولية. يرجى المحاولة مرة أخرى.');
@@ -267,13 +341,15 @@ export default function App() {
     async (data: { name: string; address: string; phone: string }) => {
       try {
         const detected = findCityInAddress(data.address);
+        // Real coordinates when possible, city centre otherwise.
+        const geocoded = await geocodeWithNominatim(data.address);
         const newDelivery: Delivery = {
           id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
           name: data.name || 'غير معروف',
           address: data.address || 'غير معروف',
           phone: data.phone || 'غير معروف',
-          latitude: detected.lat,
-          longitude: detected.lon,
+          latitude: geocoded?.lat ?? detected.lat,
+          longitude: geocoded?.lon ?? detected.lon,
           order: 0,
         };
         await saveDelivery(newDelivery);

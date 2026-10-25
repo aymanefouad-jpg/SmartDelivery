@@ -223,63 +223,103 @@ export async function geocodeAddress(address: string): Promise<{
   }
 }
 
-/**
- * Geocode an address using Nominatim (OpenStreetMap) - FREE, no API key required.
- * Restricted to Morocco for accuracy.
- */
-export const geocodeWithNominatim = async (address: string): Promise<{ lat: number; lon: number } | null> => {
-  if (!address || address.trim().length < 3) {
-    return null;
-  }
+// Longest we wait for a single Nominatim reply. Kept short so a slow network
+// cannot freeze the "add delivery" / "open route" flow.
+const NOMINATIM_TIMEOUT_MS = 5000;
 
+// If the geocoder answers with a point farther than this from the detected
+// city centre, the answer belongs to another city (e.g. "شارع محمد الخامس
+// طنجة" resolved to Al Hoceima in testing). Reject it instead of routing
+// the driver 180 km away.
+const MAX_DISTANCE_FROM_CITY_KM = 45;
+
+interface NominatimResult {
+  lat: string;
+  lon: string;
+}
+
+const fetchNominatim = async (query: string): Promise<{ lat: number; lon: number } | null> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS);
   try {
-    // Clean and normalize the address
-    const cleanAddress = address.replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-    
-    // Add "Morocco" if not present
-    const query = cleanAddress.toLowerCase().includes('morocco') || cleanAddress.includes('المغرب')
-      ? cleanAddress
-      : `${cleanAddress}, Morocco`;
-
-    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en&addressdetails=1`;
-    
-    console.log('Nominatim URL:', url);
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(
+      `${query}, Morocco`
+    )}&format=json&limit=1&countrycodes=ma&accept-language=ar,fr,en`;
 
     const response = await fetch(url, {
-      headers: {
-        'User-Agent': 'AFD-Delivery-App/1.0',
-      },
+      headers: { 'User-Agent': 'AFD-Delivery-App/1.0' },
+      signal: controller.signal,
     });
 
-    if (!response.ok) {
-      console.log('Nominatim HTTP error:', response.status);
-      return null;
-    }
+    if (!response.ok) return null;
 
-    const data = await response.json();
-    console.log('Nominatim result:', JSON.stringify(data).substring(0, 300));
+    const data = (await response.json()) as NominatimResult[];
+    if (!Array.isArray(data) || data.length === 0) return null;
 
-    if (data && data.length > 0) {
-      const result = data[0];
-      
-      // Verify the result is in Morocco
-      if (result.address && result.address.country_code && result.address.country_code !== 'ma') {
-        console.log('Result not in Morocco, ignoring.');
-        return null;
-      }
+    const lat = parseFloat(data[0].lat);
+    const lon = parseFloat(data[0].lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
 
-      console.log('Nominatim coords:', result.lat, result.lon);
-      return {
-        lat: parseFloat(result.lat),
-        lon: parseFloat(result.lon),
-      };
-    }
-    console.log('Nominatim returned no results');
+    return { lat, lon };
+  } catch {
     return null;
-  } catch (error) {
-    console.error('Nominatim error:', error);
-    return null;
+  } finally {
+    clearTimeout(timer);
   }
+};
+
+/**
+ * Resolve a delivery address to real coordinates with Nominatim (free, no key).
+ *
+ * Short neighbourhood names alone ("كزناية") resolve well, but long OCR text
+ * ("فرساي كزناية طنجة") often returns nothing, so we retry after dropping the
+ * first one or two words. Every answer is checked against the detected city
+ * centre; wrong-city matches are discarded and the next query is tried.
+ *
+ * Returns null when nothing trustworthy was found — callers then fall back to
+ * the city-centre coordinates from findCityInAddress.
+ */
+export const geocodeWithNominatim = async (
+  address: string
+): Promise<{ lat: number; lon: number } | null> => {
+  if (!address) return null;
+
+  const clean = address
+    .replace(/\n/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/,?\s*(morocco|maroc|المغرب)\s*$/i, '')
+    .trim();
+
+  if (clean.length < 3) return null;
+
+  const city = findCityInAddress(clean);
+  const hasKnownCity = city.city !== 'Unknown';
+
+  // Full address first, then progressively shorter neighbourhood/city forms.
+  const tokens = clean.split(' ').filter(Boolean);
+  const queries = [clean];
+  for (let drop = 1; drop <= 2; drop++) {
+    if (tokens.length - drop >= 2) {
+      queries.push(tokens.slice(drop).join(' '));
+    }
+  }
+
+  for (const query of queries) {
+    const result = await fetchNominatim(query);
+    if (!result) continue;
+
+    if (
+      hasKnownCity &&
+      calculateDistance(city.lat, city.lon, result.lat, result.lon) >
+        MAX_DISTANCE_FROM_CITY_KM
+    ) {
+      continue;
+    }
+
+    return result;
+  }
+
+  return null;
 };
 
 export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Delivery> => {
@@ -312,13 +352,18 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
       geminiData.city ||
       (detected.city !== 'Unknown' ? detected.city : 'غير معروف');
 
+    // Prefer real coordinates; fall back to the city centre when the free
+    // geocoder has no trustworthy answer.
+    const geocoded =
+      address !== 'غير معروف' ? await geocodeWithNominatim(address) : null;
+
     return {
       id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
       name: geminiData.name || 'غير معروف',
       address,
       phone: geminiData.phone || 'غير معروف',
-      latitude: detected.lat,
-      longitude: detected.lon,
+      latitude: geocoded?.lat ?? detected.lat,
+      longitude: geocoded?.lon ?? detected.lon,
       order: 0,
       status: 'NEW',
       imagePath: savedImagePath,
@@ -454,13 +499,16 @@ export const processNewDeliveryFromPhoto = async (photoUri: string): Promise<Del
   console.log('=== ADDRESS:', address, '===');
   console.log('=== CITY DETECTED:', detected.city, 'COORDS:', detected.lat, detected.lon, '===');
 
+  const geocoded =
+    address !== 'غير معروف' ? await geocodeWithNominatim(address) : null;
+
   return {
     id: `delivery_${Date.now()}_${Math.random().toString(36).substring(7)}`,
     name,
     address,
     phone,
-    latitude: detected.lat,
-    longitude: detected.lon,
+    latitude: geocoded?.lat ?? detected.lat,
+    longitude: geocoded?.lon ?? detected.lon,
     order: 0,
     status: 'NEW',
     imagePath: savedImagePath,

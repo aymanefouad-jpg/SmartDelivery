@@ -96,6 +96,24 @@ export const saveDelivery = async (delivery: Delivery): Promise<void> => {
   );
 };
 
+export const updateDeliveryDetails = async (delivery: Delivery): Promise<void> => {
+  const database = await getDB();
+  await database.runAsync(
+    `UPDATE deliveries
+     SET name = ?, address = ?, phone = ?, latitude = ?, longitude = ?, updated_at = ?
+     WHERE id = ?`,
+    [
+      delivery.name,
+      delivery.address,
+      delivery.phone,
+      delivery.latitude,
+      delivery.longitude,
+      Date.now(),
+      delivery.id,
+    ]
+  );
+};
+
 export const getAllDeliveries = async (): Promise<Delivery[]> => {
   const database = await getDB();
   const rows = await database.getAllAsync<any>(
